@@ -33,6 +33,7 @@ type Server struct {
 	connectors     *connectors.Service
 	flows          *flows.Service
 	flowRunner     *flows.Runner
+	flowDispatcher flows.Dispatcher
 	chatLimiter    *ratelimit.Keyed
 	mail           mailer.Mailer
 	appURL         string
@@ -56,6 +57,7 @@ type Deps struct {
 	Connectors     *connectors.Service
 	Flows          *flows.Service
 	FlowRunner     *flows.Runner
+	FlowDispatcher flows.Dispatcher
 	Mailer         mailer.Mailer
 	// AppURL is the public URL users should be directed to (used in email links).
 	AppURL string
@@ -90,6 +92,7 @@ func New(d Deps) *Server {
 		connectors:     d.Connectors,
 		flows:          d.Flows,
 		flowRunner:     d.FlowRunner,
+		flowDispatcher: d.FlowDispatcher,
 		chatLimiter:    chatLim,
 		mail:           d.Mailer,
 		appURL:         appURL,
@@ -107,6 +110,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/logout", s.logout)
 	mux.HandleFunc("POST /api/v1/auth/forgot", s.forgotPassword)
 	mux.HandleFunc("POST /api/v1/auth/reset", s.resetPassword)
+	mux.HandleFunc("POST /webhooks/{tenant_slug}/{flow_id}", s.webhookReceive)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -149,6 +153,7 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("PATCH /api/v1/flows/{id}", auth.RequireMembership(http.HandlerFunc(s.patchFlow)))
 	authed.Handle("DELETE /api/v1/flows/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteFlow)))
 	authed.Handle("POST /api/v1/flows/{id}/trigger", auth.RequireMembership(http.HandlerFunc(s.triggerFlow)))
+	authed.Handle("POST /api/v1/flows/{id}/webhook_token", auth.RequireMembership(http.HandlerFunc(s.rotateFlowWebhookToken)))
 	authed.Handle("GET /api/v1/flows/{id}/runs", auth.RequireMembership(http.HandlerFunc(s.listFlowRuns)))
 	authed.Handle("GET /api/v1/flow_runs/{run_id}", auth.RequireMembership(http.HandlerFunc(s.getFlowRun)))
 	authed.Handle("GET /api/v1/flow_approvals", auth.RequireMembership(http.HandlerFunc(s.listFlowApprovals)))

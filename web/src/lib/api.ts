@@ -457,10 +457,16 @@ export const api = {
     tool_allowlist: string[]
     mode: FlowMode
   }) =>
-    request<{ flow: Flow }>('/api/v1/flows', {
+    request<{ flow: Flow; webhook_url?: string; webhook_token_once?: string }>('/api/v1/flows', {
       method: 'POST',
       body: JSON.stringify(body),
-    }).then((r) => r.flow),
+    }),
+
+  rotateFlowWebhookToken: (id: string) =>
+    request<{ webhook_url: string; webhook_token_once: string }>(
+      `/api/v1/flows/${encodeURIComponent(id)}/webhook_token`,
+      { method: 'POST' }
+    ),
 
   patchFlow: (id: string, body: Partial<{
     name: string

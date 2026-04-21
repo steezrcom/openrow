@@ -2,8 +2,9 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { ChevronRight } from 'lucide-react'
-import { api, ApiError, type FlowMode } from '@/lib/api'
+import { ChevronRight, Copy } from 'lucide-react'
+import { api, ApiError, type FlowMode, type FlowTriggerKind } from '@/lib/api'
+import { useEntities } from '@/hooks/useEntities'
 import { Button, Card, Input, Label, Textarea } from '@/components/ui'
 import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
@@ -17,6 +18,11 @@ type FormValues = {
   description: string
   goal: string
   mode: FlowMode
+  trigger_kind: FlowTriggerKind
+  entity: string
+  event_insert: boolean
+  event_update: boolean
+  event_delete: boolean
 }
 
 function NewFlowPage() {
@@ -24,29 +30,56 @@ function NewFlowPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const tools = useQuery({ queryKey: ['flow-tools'], queryFn: api.listFlowTools })
+  const entities = useEntities()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  const [webhookInfo, setWebhookInfo] = useState<{ url: string; token: string; flowId: string } | null>(null)
 
-  const { register, handleSubmit, formState: { isSubmitting } } = useForm<FormValues>({
-    defaultValues: { name: '', description: '', goal: '', mode: 'dry_run' },
+  const { register, handleSubmit, watch, formState: { isSubmitting } } = useForm<FormValues>({
+    defaultValues: {
+      name: '', description: '', goal: '', mode: 'dry_run',
+      trigger_kind: 'manual', entity: '',
+      event_insert: true, event_update: false, event_delete: false,
+    },
   })
+  const triggerKind = watch('trigger_kind')
 
   const save = useMutation({
-    mutationFn: (v: FormValues) =>
-      api.createFlow({
+    mutationFn: (v: FormValues) => {
+      const triggerConfig: Record<string, unknown> = {}
+      if (v.trigger_kind === 'entity_event') {
+        triggerConfig.entity = v.entity
+        const events: string[] = []
+        if (v.event_insert) events.push('insert')
+        if (v.event_update) events.push('update')
+        if (v.event_delete) events.push('delete')
+        triggerConfig.events = events
+      }
+      return api.createFlow({
         name: v.name,
         description: v.description,
         goal: v.goal,
-        trigger_kind: 'manual',
+        trigger_kind: v.trigger_kind,
+        trigger_config: triggerConfig,
         tool_allowlist: Array.from(selected),
         mode: v.mode,
-      }),
-    onSuccess: (flow) => {
+      })
+    },
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['flows'] })
-      navigate({ to: '/app/flows/$id', params: { id: flow.id } })
+      if (res.webhook_url && res.webhook_token_once) {
+        // Show the one-time token before navigating away.
+        setWebhookInfo({ url: res.webhook_url, token: res.webhook_token_once, flowId: res.flow.id })
+        return
+      }
+      navigate({ to: '/app/flows/$id', params: { id: res.flow.id } })
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'failed'),
   })
+
+  if (webhookInfo) {
+    return <WebhookDisplayOnce info={webhookInfo} onDone={() => navigate({ to: '/app/flows/$id', params: { id: webhookInfo.flowId } })} />
+  }
 
   function toggle(name: string) {
     const next = new Set(selected)
@@ -102,6 +135,59 @@ function NewFlowPage() {
           </div>
 
           <div className="space-y-2">
+            <Label>{t('flows.trigger')}</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {(['manual', 'entity_event', 'webhook'] as FlowTriggerKind[]).map((k) => (
+                <label
+                  key={k}
+                  className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background p-3 hover:bg-accent"
+                >
+                  <input type="radio" value={k} {...register('trigger_kind')} className="mt-1" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{t(`flows.trigger.${k}` as const)}</div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {t(`flows.trigger.${k}.hint` as const)}
+                    </p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {triggerKind === 'entity_event' && (
+            <div className="space-y-2 rounded-md border border-border bg-muted/10 p-3">
+              <Label htmlFor="entity">{t('flows.trigger.entity')}</Label>
+              <select
+                id="entity"
+                {...register('entity', { required: triggerKind === 'entity_event' })}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              >
+                <option value="">{t('flows.trigger.entity.pick')}</option>
+                {(entities.data ?? []).map((e) => (
+                  <option key={e.name} value={e.name}>{e.display_name} ({e.name})</option>
+                ))}
+              </select>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-1.5 text-xs">
+                  <input type="checkbox" {...register('event_insert')} /> insert
+                </label>
+                <label className="flex items-center gap-1.5 text-xs">
+                  <input type="checkbox" {...register('event_update')} /> update
+                </label>
+                <label className="flex items-center gap-1.5 text-xs">
+                  <input type="checkbox" {...register('event_delete')} /> delete
+                </label>
+              </div>
+            </div>
+          )}
+
+          {triggerKind === 'webhook' && (
+            <div className="rounded-md border border-border bg-muted/10 p-3 text-xs text-muted-foreground">
+              {t('flows.trigger.webhook.hint.create')}
+            </div>
+          )}
+
+          <div className="space-y-2">
             <Label>{t('flows.mode')}</Label>
             <div className="grid grid-cols-3 gap-2">
               {(['dry_run', 'approve', 'auto'] as FlowMode[]).map((m) => (
@@ -154,6 +240,34 @@ function NewFlowPage() {
             </Link>
           </div>
         </form>
+      </Card>
+    </div>
+  )
+}
+
+function WebhookDisplayOnce({
+  info,
+  onDone,
+}: {
+  info: { url: string; token: string; flowId: string }
+  onDone: () => void
+}) {
+  const t = useT()
+  return (
+    <div className="mx-auto max-w-3xl px-8 py-10">
+      <Card className="p-6 space-y-4">
+        <h1 className="text-xl font-semibold tracking-tight">{t('flows.webhook.created')}</h1>
+        <p className="text-sm text-muted-foreground">{t('flows.webhook.createdHint')}</p>
+        <div className="space-y-1">
+          <Label>{t('flows.webhook.url')}</Label>
+          <div className="flex items-center gap-2">
+            <Input readOnly value={info.url} onFocus={(e) => e.currentTarget.select()} />
+            <Button type="button" variant="ghost" onClick={() => navigator.clipboard.writeText(info.url)}>
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+        <Button onClick={onDone}>{t('flows.webhook.done')}</Button>
       </Card>
     </div>
   )
