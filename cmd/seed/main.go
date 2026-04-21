@@ -244,11 +244,15 @@ func seedDemoData(ctx context.Context, svc *entities.Service, tenantID, schema s
 	}
 	log.Info("seeded projects", "n", len(projectIDs))
 
-	taskIDs, err := insertTasks(ctx, svc, tenantID, schema, projectIDs, today, rng)
+	tasksByProject, err := insertTasks(ctx, svc, tenantID, schema, projectIDs, today, rng)
 	if err != nil {
 		return fmt.Errorf("tasks: %w", err)
 	}
-	log.Info("seeded tasks", "n", len(taskIDs))
+	taskTotal := 0
+	for _, ts := range tasksByProject {
+		taskTotal += len(ts)
+	}
+	log.Info("seeded tasks", "n", taskTotal)
 
 	invoiceIDs, err := insertInvoices(ctx, svc, tenantID, schema, clientIDs, today, rng)
 	if err != nil {
@@ -262,7 +266,7 @@ func seedDemoData(ctx context.Context, svc *entities.Service, tenantID, schema s
 	}
 	log.Info("seeded invoice items", "n", itemCount)
 
-	teCount, err := insertTimeEntries(ctx, svc, tenantID, schema, projectIDs, taskIDs, today, rng)
+	teCount, err := insertTimeEntries(ctx, svc, tenantID, schema, projectIDs, tasksByProject, today, rng)
 	if err != nil {
 		return fmt.Errorf("time entries: %w", err)
 	}
@@ -403,7 +407,7 @@ func insertProjects(ctx context.Context, svc *entities.Service, tenantID, schema
 	return ids, nil
 }
 
-func insertTasks(ctx context.Context, svc *entities.Service, tenantID, schema string, projectIDs []string, today time.Time, rng *rand.Rand) ([]string, error) {
+func insertTasks(ctx context.Context, svc *entities.Service, tenantID, schema string, projectIDs []string, today time.Time, rng *rand.Rand) (map[string][]string, error) {
 	ent, err := svc.Get(ctx, tenantID, "tasks")
 	if err != nil {
 		return nil, err
@@ -416,7 +420,7 @@ func insertTasks(ctx context.Context, svc *entities.Service, tenantID, schema st
 	assignees := []string{"Johnny", "Petra", "Tomáš", "Klára"}
 	statuses := []string{"todo", "in_progress", "done", "done", "done"}
 
-	ids := make([]string, 0, len(projectIDs)*3)
+	byProject := make(map[string][]string, len(projectIDs))
 	for i, pid := range projectIDs {
 		count := 2 + rng.Intn(3)
 		for j := 0; j < count; j++ {
@@ -434,10 +438,10 @@ func insertTasks(ctx context.Context, svc *entities.Service, tenantID, schema st
 			if err != nil {
 				return nil, fmt.Errorf("insert task: %w", err)
 			}
-			ids = append(ids, id)
+			byProject[pid] = append(byProject[pid], id)
 		}
 	}
-	return ids, nil
+	return byProject, nil
 }
 
 func insertInvoices(ctx context.Context, svc *entities.Service, tenantID, schema string, clientIDs []string, today time.Time, rng *rand.Rand) ([]string, error) {
@@ -541,7 +545,7 @@ func insertInvoiceItems(ctx context.Context, svc *entities.Service, tenantID, sc
 	return count, nil
 }
 
-func insertTimeEntries(ctx context.Context, svc *entities.Service, tenantID, schema string, projectIDs, taskIDs []string, today time.Time, rng *rand.Rand) (int, error) {
+func insertTimeEntries(ctx context.Context, svc *entities.Service, tenantID, schema string, projectIDs []string, tasksByProject map[string][]string, today time.Time, rng *rand.Rand) (int, error) {
 	ent, err := svc.Get(ctx, tenantID, "time_entries")
 	if err != nil {
 		return 0, err
@@ -570,8 +574,9 @@ func insertTimeEntries(ctx context.Context, svc *entities.Service, tenantID, sch
 				"billable":    boolStr(rng.Intn(10) > 1),
 				"rate":        "1200",
 			}
-			if len(taskIDs) > 0 && rng.Intn(2) == 0 {
-				input["task"] = taskIDs[rng.Intn(len(taskIDs))]
+			tasks := tasksByProject[pid]
+			if len(tasks) > 0 && rng.Intn(2) == 0 {
+				input["task"] = tasks[rng.Intn(len(tasks))]
 			}
 			if _, err := svc.InsertRow(ctx, schema, ent, input); err != nil {
 				return 0, fmt.Errorf("insert time entry: %w", err)
