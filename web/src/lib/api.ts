@@ -113,6 +113,34 @@ export interface ReportResult {
   rows: Record<string, unknown>[]
 }
 
+export interface LLMProvider {
+  id: string
+  name: string
+  base_url: string
+  default_model: string
+  requires_api_key: boolean
+  local?: boolean
+  notes?: string
+}
+
+export interface LLMConfigSafe {
+  provider?: string
+  base_url?: string
+  model?: string
+  has_api_key?: boolean
+  source?: 'tenant' | 'env-fallback' | ''
+  updated_at?: string
+}
+
+export interface LLMTestResult {
+  ok: boolean
+  models_ok: boolean
+  chat_ok: boolean
+  tools_ok: boolean
+  message?: string
+  model?: string
+}
+
 export interface RowsResponse {
   entity: Entity
   rows: Record<string, unknown>[]
@@ -315,6 +343,38 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+
+  llmProviders: () =>
+    request<{ providers: LLMProvider[] }>('/api/v1/llm/providers').then((r) => r.providers),
+
+  llmConfig: () =>
+    request<{ config: LLMConfigSafe }>('/api/v1/llm/config').then((r) => r.config),
+
+  putLLMConfig: (body: {
+    provider: string
+    base_url: string
+    api_key?: string | null
+    model: string
+  }) =>
+    request<{ config: LLMConfigSafe }>('/api/v1/llm/config', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }).then((r) => r.config),
+
+  deleteLLMConfig: () =>
+    request<void>('/api/v1/llm/config', { method: 'DELETE' }),
+
+  llmListModels: (body: { base_url: string; api_key: string }) =>
+    request<{ models: { id: string }[] }>('/api/v1/llm/models/list', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then((r) => r.models),
+
+  llmTest: (body: { base_url: string; api_key: string; model: string }) =>
+    request<{ result: LLMTestResult }>('/api/v1/llm/test', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then((r) => r.result),
 
   reorderReports: (slug: string, reportIDs: string[]) =>
     request<void>(

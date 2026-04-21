@@ -61,12 +61,35 @@ Environment variables (all read from `.env`):
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
 | `DATABASE_URL` | required | Postgres connection string |
-| `ANTHROPIC_API_KEY` | optional | Needed for the chat panel and `describe-to-build` flows |
+| `OPENROW_SECRET_KEY` | required | base64-encoded 32-byte key for encrypting stored API keys + connector secrets (`openssl rand -base64 32`) |
+| `ANTHROPIC_API_KEY` | optional | Fallback LLM credentials when a workspace has no per-tenant LLM config. Handy for dev; in prod each workspace sets its own. |
 | `HTTP_ADDR` | `:8080` | Address the server listens on |
 | `APP_URL` | `http://localhost:5173` | Public URL used in email links (password reset) |
 | `SECURE_COOKIES` | `false` | Set to `true` behind HTTPS in prod |
 | `SPA_DIR` | unset | Path to the built SPA (e.g. `web/dist`). Serves the React app from the Go binary when set. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+
+## LLM providers
+
+OpenRow speaks OpenAI format and lets each workspace bring its own key. In **Settings → LLM** you'll find presets for OpenAI, Anthropic, OpenRouter, Groq, Together, DeepSeek, Google Gemini, Ollama, LM Studio, and a generic "custom" row. Pick one, paste a key, click **Fetch models** to populate the dropdown, hit **Test connection** to verify chat + tool calling.
+
+### Using local models
+
+Any server speaking `/v1/chat/completions` works: Ollama, LM Studio, vLLM, llama.cpp's `llama-server`, LocalAI, Jan, Open WebUI, LiteLLM.
+
+Recommended models for the agent (tool calling):
+
+- **Cloud:** GPT-4o, Claude Sonnet 4/4.5, Gemini 2.0 Flash, Llama 3.3 70B on Groq.
+- **Local:** Llama 3.1 8B+, Qwen 2.5 7B+, Mistral Nemo, Hermes 3. Anything under 7B drops parameters and silently mis-uses tools.
+
+Latency on CPU inference can be 10-100× slower than cloud APIs; the HTTP client waits up to 180s per turn.
+
+### Docker networking for local models
+
+If OpenRow runs in Docker and your local LLM server runs on the host:
+
+- **macOS / Windows**: point the base URL at `http://host.docker.internal:11434/v1`.
+- **Linux**: add `network_mode: host` to the app service in `docker-compose.app.yml`, or bind your LLM to `0.0.0.0` and use the host's LAN IP.
 
 ## Project layout
 

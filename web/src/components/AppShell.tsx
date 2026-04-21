@@ -103,6 +103,13 @@ function Sidebar({
         >
           Timesheet
         </NavItem>
+        <NavItem
+          to="/app/settings/llm"
+          icon={<Settings className="h-4 w-4" />}
+          active={Boolean(match({ to: '/app/settings/llm' }))}
+        >
+          Settings
+        </NavItem>
 
         <div className="mt-5 flex items-center justify-between px-3 pb-1">
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
