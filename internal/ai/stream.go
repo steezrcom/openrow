@@ -57,6 +57,12 @@ func (a *Agent) RunStream(
 	const maxIterations = 8
 
 	for iter := 0; iter < maxIterations; iter++ {
+		// Bail early if the client disconnected between iterations. Recv()
+		// below also respects ctx, but catching it here avoids starting a
+		// new upstream stream only to tear it down.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		stream, err := client.CreateChatCompletionStream(ctx, openai.ChatCompletionRequest{
 			Model:      cfg.Model,
 			Messages:   msgs,
@@ -147,6 +153,9 @@ func (a *Agent) RunStream(
 		})
 
 		for _, tc := range tcs {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			input := json.RawMessage(tc.Function.Arguments)
 			emit(StreamEvent{
 				Type: "tool_start",

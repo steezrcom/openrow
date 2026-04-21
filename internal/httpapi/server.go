@@ -9,6 +9,7 @@ import (
 	"github.com/openrow/openrow/internal/entities"
 	"github.com/openrow/openrow/internal/llm"
 	"github.com/openrow/openrow/internal/mailer"
+	"github.com/openrow/openrow/internal/ratelimit"
 	"github.com/openrow/openrow/internal/reports"
 	"github.com/openrow/openrow/internal/spa"
 	"github.com/openrow/openrow/internal/tenant"
@@ -27,6 +28,7 @@ type Server struct {
 	proposer       *ai.Proposer
 	agent          *ai.Agent
 	llm            *llm.Service
+	chatLimiter    *ratelimit.Keyed
 	mail           mailer.Mailer
 	appURL         string
 	secureCookies  bool
@@ -61,6 +63,9 @@ func New(d Deps) *Server {
 	if appURL == "" {
 		appURL = "http://localhost:5173"
 	}
+	// Chat rate limit: avg 1 message every 2s per user, burst of 5.
+	// Plenty for real usage; blocks only pathological loops / abuse.
+	chatLim := ratelimit.New(0.5, 5)
 	return &Server{
 		log:            d.Log,
 		users:          d.Users,
@@ -74,6 +79,7 @@ func New(d Deps) *Server {
 		proposer:       d.Proposer,
 		agent:          d.Agent,
 		llm:            d.LLM,
+		chatLimiter:    chatLim,
 		mail:           d.Mailer,
 		appURL:         appURL,
 		secureCookies:  d.SecureCookies,
@@ -112,7 +118,6 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("POST /api/v1/entities/{name}/fields", auth.RequireMembership(http.HandlerFunc(s.addField)))
 	authed.Handle("DELETE /api/v1/entities/{name}/fields/{field}", auth.RequireMembership(http.HandlerFunc(s.dropField)))
 	authed.Handle("GET /api/v1/entities/{name}/fields/{field}/options", auth.RequireMembership(http.HandlerFunc(s.listFieldOptions)))
-	authed.Handle("POST /api/v1/chat/messages", auth.RequireMembership(http.HandlerFunc(s.chat)))
 	authed.Handle("POST /api/v1/chat/messages/stream", auth.RequireMembership(http.HandlerFunc(s.chatStream)))
 
 	authed.Handle("GET /api/v1/templates", auth.RequireAuth(http.HandlerFunc(s.listTemplates)))

@@ -417,22 +417,4 @@ export const api = {
 
   deleteReport: (id: string) =>
     request<void>(`/api/v1/reports/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-
-  chat: (body: { history: { role: string; text: string }[]; message: string }) =>
-    request<{
-      assistant: {
-        role: 'assistant'
-        text: string
-        actions?: {
-          tool: string
-          input: unknown
-          summary: string
-          entity_name?: string
-          error?: string
-        }[]
-      }
-    }>('/api/v1/chat/messages', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
 }

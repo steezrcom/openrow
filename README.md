@@ -30,13 +30,15 @@ OpenRow is an open-source operations platform built for agencies, studios, and c
 git clone https://github.com/openrow/openrow
 cd openrow
 cp .env.example .env
-# set ANTHROPIC_API_KEY in .env
+# set OPENROW_SECRET_KEY (openssl rand -base64 32)
+# set ANTHROPIC_API_KEY (optional fallback; each workspace can override in Settings)
 
 make db-up        # Postgres via docker-compose
-make api          # Go server on :8080
-make web          # Vite dev server on :5173, proxies /api
+make dev          # air-watched Go backend + Vite frontend, both with HMR
 open http://localhost:5173
 ```
+
+`make dev` runs the Go server under [air](https://github.com/air-verse/air) (auto-rebuild on `.go` changes) and the Vite dev server together. Ctrl+C stops both. Use `make api` / `make web` in separate terminals if you prefer.
 
 Sign up, pick a workspace name, and install the **Agency** template on the empty home screen. Or just describe your first entity.
 

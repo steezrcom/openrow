@@ -1,9 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -16,46 +19,27 @@ type chatRequest struct {
 	Message string        `json:"message"`
 }
 
-type chatResponse struct {
-	Assistant ai.ChatTurn `json:"assistant"`
-}
-
-func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
-	if s.agent == nil {
-		writeErr(w, http.StatusServiceUnavailable, "chat not available: LLM not configured")
-		return
-	}
-	m, _ := auth.MembershipFromContext(r.Context())
-
-	var req chatRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-	msg := strings.TrimSpace(req.Message)
-	if msg == "" {
-		writeErr(w, http.StatusBadRequest, "message is required")
-		return
-	}
-
-	assistant, err := s.agent.Run(r.Context(), m.TenantID, m.PGSchema, req.History, msg)
-	if err != nil {
-		writeErr(w, http.StatusBadGateway, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, chatResponse{Assistant: *assistant})
-}
-
-// chatStream handles streaming chat turns via Server-Sent Events. Each line
-// is a single JSON object carrying a `type` field the client switches on:
-// text_delta (incremental tokens), tool_start / tool_end (pills), done
-// (final assistant turn), and error.
+// chatStream is the only chat endpoint. Each SSE `data:` line is one JSON
+// event: text_delta (incremental tokens), tool_start / tool_end (pills), done
+// (final turn + actions), error.
+//
+// Client disconnects are detected via r.Context(); the agent loop bails
+// between iterations and we don't bother emitting a trailing error for a
+// connection that's already gone.
 func (s *Server) chatStream(w http.ResponseWriter, r *http.Request) {
 	if s.agent == nil {
 		writeErr(w, http.StatusServiceUnavailable, "chat not available: LLM not configured")
 		return
 	}
+	user, _, _ := auth.FromContext(r.Context())
 	m, _ := auth.MembershipFromContext(r.Context())
+
+	if ok, retry := s.chatLimiter.Allow(user.ID); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
+		writeErr(w, http.StatusTooManyRequests,
+			"Slow down. You're sending messages faster than the rate limit allows.")
+		return
+	}
 
 	var req chatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -78,8 +62,7 @@ func (s *Server) chatStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no") // tell reverse proxies not to buffer
 
-	// emit is called from the agent (same goroutine). Guard with a mutex
-	// because if we ever move emission to a worker pool we'll need it.
+	// Guarded for future use; current emission is single-goroutine.
 	var mu sync.Mutex
 	emit := func(ev ai.StreamEvent) {
 		mu.Lock()
@@ -92,7 +75,13 @@ func (s *Server) chatStream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	if err := s.agent.RunStream(r.Context(), m.TenantID, m.PGSchema, req.History, msg, emit); err != nil {
-		emit(ai.StreamEvent{Type: "error", Message: err.Error()})
+	err := s.agent.RunStream(r.Context(), m.TenantID, m.PGSchema, req.History, msg, emit)
+	if err == nil {
+		return
 	}
+	// Client went away mid-turn — nothing to emit to.
+	if errors.Is(err, context.Canceled) || errors.Is(r.Context().Err(), context.Canceled) {
+		return
+	}
+	emit(ai.StreamEvent{Type: "error", Message: err.Error()})
 }
