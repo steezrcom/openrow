@@ -1,4 +1,4 @@
-.PHONY: dev api api-watch web web-install web-build build run db-up db-down db-psql db-seed test tidy
+.PHONY: dev api api-watch web web-install web-build build run db-up db-down db-psql db-seed seed seed-reset test tidy
 
 # Resolve air: use it from PATH if present, otherwise from $GOPATH/bin.
 AIR := $(shell command -v air 2>/dev/null)
@@ -58,6 +58,17 @@ db-psql:
 
 db-seed:
 	docker compose exec -T postgres psql -U openrow -d openrow < scripts/seed.sql
+
+# -------- dev fixtures --------
+# Creates/reuses demo@openrow.local / openrow123 in a `demo` tenant,
+# installs the agency template, and inserts realistic Czech agency data.
+# Idempotent: skips row seeding if the tenant already has demo data.
+seed:
+	set -a; . ./.env; set +a; go run ./cmd/seed
+
+# Wipes the `demo` tenant (schema + metadata) and re-seeds from scratch.
+seed-reset:
+	set -a; . ./.env; set +a; go run ./cmd/seed -reset
 
 # -------- tests / housekeeping --------
 test:
