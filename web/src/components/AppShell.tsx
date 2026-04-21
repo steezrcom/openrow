@@ -84,7 +84,7 @@ function Sidebar({
           <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 text-primary">
             <Sparkles className="h-3.5 w-3.5" />
           </span>
-          steezr<span className="text-primary">_</span>
+          OpenRow<span className="text-primary">.</span>
         </Link>
       </div>
 

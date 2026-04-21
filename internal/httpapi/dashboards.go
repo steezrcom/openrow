@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/steezrcom/steezr-erp/internal/auth"
-	"github.com/steezrcom/steezr-erp/internal/entities"
-	"github.com/steezrcom/steezr-erp/internal/reports"
+	"github.com/openrow/openrow/internal/auth"
+	"github.com/openrow/openrow/internal/entities"
+	"github.com/openrow/openrow/internal/reports"
 )
 
 func (s *Server) listDashboards(w http.ResponseWriter, r *http.Request) {

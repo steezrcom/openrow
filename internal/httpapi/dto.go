@@ -3,8 +3,8 @@ package httpapi
 import (
 	"time"
 
-	"github.com/steezrcom/steezr-erp/internal/auth"
-	"github.com/steezrcom/steezr-erp/internal/entities"
+	"github.com/openrow/openrow/internal/auth"
+	"github.com/openrow/openrow/internal/entities"
 )
 
 type User struct {

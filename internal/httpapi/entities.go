@@ -7,8 +7,8 @@ import (
 	"strconv"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/steezrcom/steezr-erp/internal/auth"
-	"github.com/steezrcom/steezr-erp/internal/entities"
+	"github.com/openrow/openrow/internal/auth"
+	"github.com/openrow/openrow/internal/entities"
 )
 
 func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {

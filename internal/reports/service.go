@@ -109,7 +109,7 @@ func (s *Service) Create(ctx context.Context, tenantID string, in CreateDashboar
 
 	var id string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO steezr.dashboards (tenant_id, name, slug, description)
+		INSERT INTO openrow.dashboards (tenant_id, name, slug, description)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id`,
 		tenantID, in.Name, slug, nullIfEmpty(in.Description),
@@ -125,7 +125,7 @@ func (s *Service) Create(ctx context.Context, tenantID string, in CreateDashboar
 		spec, _ := json.Marshal(r.QuerySpec)
 		opts, _ := json.Marshal(marshalOptions(r.Options))
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO steezr.reports (dashboard_id, title, subtitle, widget_type, query_spec, options, width, position)
+			INSERT INTO openrow.reports (dashboard_id, title, subtitle, widget_type, query_spec, options, width, position)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 			id, r.Title, nullIfEmpty(r.Subtitle), string(r.WidgetType), spec, opts, width, i,
 		); err != nil {
@@ -196,7 +196,7 @@ func marshalOptions(opts map[string]interface{}) map[string]interface{} {
 func (s *Service) List(ctx context.Context, tenantID string) ([]Dashboard, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, tenant_id, name, slug, COALESCE(description, ''), position, created_at, updated_at
-		FROM steezr.dashboards
+		FROM openrow.dashboards
 		WHERE tenant_id = $1
 		ORDER BY position, name`, tenantID)
 	if err != nil {
@@ -219,7 +219,7 @@ func (s *Service) Get(ctx context.Context, tenantID, slug string) (*Dashboard, e
 	var d Dashboard
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, tenant_id, name, slug, COALESCE(description, ''), position, created_at, updated_at
-		FROM steezr.dashboards
+		FROM openrow.dashboards
 		WHERE tenant_id = $1 AND slug = $2`,
 		tenantID, slug,
 	).Scan(&d.ID, &d.TenantID, &d.Name, &d.Slug, &d.Description, &d.Position, &d.CreatedAt, &d.UpdatedAt)
@@ -232,7 +232,7 @@ func (s *Service) Get(ctx context.Context, tenantID, slug string) (*Dashboard, e
 
 	rep, err := s.pool.Query(ctx, `
 		SELECT id, dashboard_id, title, COALESCE(subtitle, ''), widget_type, query_spec, options, width, position, created_at, updated_at
-		FROM steezr.reports
+		FROM openrow.reports
 		WHERE dashboard_id = $1
 		ORDER BY position`, d.ID)
 	if err != nil {
@@ -291,7 +291,7 @@ func (s *Service) UpdateDashboard(ctx context.Context, tenantID, slug string, in
 	}
 	sets = append(sets, "updated_at = now()")
 	params = append(params, tenantID, slug)
-	q := fmt.Sprintf("UPDATE steezr.dashboards SET %s WHERE tenant_id = $%d AND slug = $%d",
+	q := fmt.Sprintf("UPDATE openrow.dashboards SET %s WHERE tenant_id = $%d AND slug = $%d",
 		strings.Join(sets, ", "), idx, idx+1)
 	tag, err := s.pool.Exec(ctx, q, params...)
 	if err != nil {
@@ -305,7 +305,7 @@ func (s *Service) UpdateDashboard(ctx context.Context, tenantID, slug string, in
 
 func (s *Service) Delete(ctx context.Context, tenantID, slug string) error {
 	tag, err := s.pool.Exec(ctx, `
-		DELETE FROM steezr.dashboards
+		DELETE FROM openrow.dashboards
 		WHERE tenant_id = $1 AND slug = $2`, tenantID, slug)
 	if err != nil {
 		return err
@@ -335,7 +335,7 @@ func (s *Service) AddReport(ctx context.Context, tenantID, slug string, in Creat
 	var wt string
 	var specBytes, optsBytes []byte
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO steezr.reports (dashboard_id, title, subtitle, widget_type, query_spec, options, width, position)
+		INSERT INTO openrow.reports (dashboard_id, title, subtitle, widget_type, query_spec, options, width, position)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, dashboard_id, title, COALESCE(subtitle, ''), widget_type, query_spec, options, width, position, created_at, updated_at`,
 		dash.ID, in.Title, nullIfEmpty(in.Subtitle), string(in.WidgetType), spec, opts, width, len(dash.Reports),
@@ -367,8 +367,8 @@ func (s *Service) UpdateReport(ctx context.Context, tenantID, reportID string, i
 	// Make sure the report belongs to this tenant.
 	var dashboardID string
 	err := s.pool.QueryRow(ctx, `
-		SELECT r.dashboard_id FROM steezr.reports r
-		JOIN steezr.dashboards d ON d.id = r.dashboard_id
+		SELECT r.dashboard_id FROM openrow.reports r
+		JOIN openrow.dashboards d ON d.id = r.dashboard_id
 		WHERE r.id = $1 AND d.tenant_id = $2`,
 		reportID, tenantID,
 	).Scan(&dashboardID)
@@ -429,7 +429,7 @@ func (s *Service) UpdateReport(ctx context.Context, tenantID, reportID string, i
 	}
 	sets = append(sets, "updated_at = now()")
 	params = append(params, reportID)
-	q := fmt.Sprintf("UPDATE steezr.reports SET %s WHERE id = $%d", strings.Join(sets, ", "), idx)
+	q := fmt.Sprintf("UPDATE openrow.reports SET %s WHERE id = $%d", strings.Join(sets, ", "), idx)
 	_, err = s.pool.Exec(ctx, q, params...)
 	return err
 }
@@ -465,7 +465,7 @@ func (s *Service) ReorderReports(ctx context.Context, tenantID, slug string, ids
 	defer tx.Rollback(ctx)
 	for i, id := range ids {
 		if _, err := tx.Exec(ctx,
-			`UPDATE steezr.reports SET position = $1, updated_at = now() WHERE id = $2`, i, id); err != nil {
+			`UPDATE openrow.reports SET position = $1, updated_at = now() WHERE id = $2`, i, id); err != nil {
 			return err
 		}
 	}
@@ -474,8 +474,8 @@ func (s *Service) ReorderReports(ctx context.Context, tenantID, slug string, ids
 
 func (s *Service) DeleteReport(ctx context.Context, tenantID, reportID string) error {
 	tag, err := s.pool.Exec(ctx, `
-		DELETE FROM steezr.reports r
-		USING steezr.dashboards d
+		DELETE FROM openrow.reports r
+		USING openrow.dashboards d
 		WHERE r.id = $1 AND d.tenant_id = $2 AND r.dashboard_id = d.id`,
 		reportID, tenantID)
 	if err != nil {
@@ -494,8 +494,8 @@ func (s *Service) GetReport(ctx context.Context, tenantID, reportID string) (*Re
 	var spec, opts []byte
 	err := s.pool.QueryRow(ctx, `
 		SELECT r.id, r.dashboard_id, r.title, COALESCE(r.subtitle, ''), r.widget_type, r.query_spec, r.options, r.width, r.position, r.created_at, r.updated_at
-		FROM steezr.reports r
-		JOIN steezr.dashboards d ON d.id = r.dashboard_id
+		FROM openrow.reports r
+		JOIN openrow.dashboards d ON d.id = r.dashboard_id
 		WHERE r.id = $1 AND d.tenant_id = $2`,
 		reportID, tenantID,
 	).Scan(&r.ID, &r.DashboardID, &r.Title, &r.Subtitle, &wt, &spec, &opts,

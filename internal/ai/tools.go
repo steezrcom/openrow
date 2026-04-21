@@ -9,9 +9,9 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/steezrcom/steezr-erp/internal/entities"
-	"github.com/steezrcom/steezr-erp/internal/reports"
-	"github.com/steezrcom/steezr-erp/internal/templates"
+	"github.com/openrow/openrow/internal/entities"
+	"github.com/openrow/openrow/internal/reports"
+	"github.com/openrow/openrow/internal/templates"
 )
 
 // tool describes one action the agent can invoke.

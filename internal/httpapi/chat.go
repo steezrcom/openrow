@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/steezrcom/steezr-erp/internal/ai"
-	"github.com/steezrcom/steezr-erp/internal/auth"
+	"github.com/openrow/openrow/internal/ai"
+	"github.com/openrow/openrow/internal/auth"
 )
 
 type chatRequest struct {

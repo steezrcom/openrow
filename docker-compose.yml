@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: steezr
-      POSTGRES_PASSWORD: steezr
-      POSTGRES_DB: steezr_erp
+      POSTGRES_USER: openrow
+      POSTGRES_PASSWORD: openrow
+      POSTGRES_DB: openrow
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U steezr -d steezr_erp"]
+      test: ["CMD-SHELL", "pg_isready -U openrow -d openrow"]
       interval: 2s
       timeout: 3s
       retries: 15

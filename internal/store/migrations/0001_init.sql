@@ -1,8 +1,8 @@
-CREATE SCHEMA IF NOT EXISTS steezr;
+CREATE SCHEMA IF NOT EXISTS openrow;
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
-CREATE TABLE steezr.tenants (
+CREATE TABLE openrow.tenants (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     slug        TEXT UNIQUE NOT NULL,
     name        TEXT NOT NULL,
@@ -10,9 +10,9 @@ CREATE TABLE steezr.tenants (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE steezr.entities (
+CREATE TABLE openrow.entities (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id       UUID NOT NULL REFERENCES steezr.tenants(id) ON DELETE CASCADE,
+    tenant_id       UUID NOT NULL REFERENCES openrow.tenants(id) ON DELETE CASCADE,
     name            TEXT NOT NULL,
     display_name    TEXT NOT NULL,
     description     TEXT,
@@ -21,20 +21,20 @@ CREATE TABLE steezr.entities (
     UNIQUE (tenant_id, name)
 );
 
-CREATE INDEX entities_tenant_idx ON steezr.entities (tenant_id);
+CREATE INDEX entities_tenant_idx ON openrow.entities (tenant_id);
 
-CREATE TABLE steezr.fields (
+CREATE TABLE openrow.fields (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    entity_id               UUID NOT NULL REFERENCES steezr.entities(id) ON DELETE CASCADE,
+    entity_id               UUID NOT NULL REFERENCES openrow.entities(id) ON DELETE CASCADE,
     name                    TEXT NOT NULL,
     display_name            TEXT NOT NULL,
     data_type               TEXT NOT NULL,
     is_required             BOOLEAN NOT NULL DEFAULT false,
     is_unique               BOOLEAN NOT NULL DEFAULT false,
-    reference_entity_id     UUID REFERENCES steezr.entities(id),
+    reference_entity_id     UUID REFERENCES openrow.entities(id),
     position                INT NOT NULL DEFAULT 0,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (entity_id, name)
 );
 
-CREATE INDEX fields_entity_idx ON steezr.fields (entity_id);
+CREATE INDEX fields_entity_idx ON openrow.fields (entity_id);

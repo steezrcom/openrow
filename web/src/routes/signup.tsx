@@ -85,7 +85,7 @@ function SignupPage() {
             <div className="space-y-2">
               <Label htmlFor="org_slug">Workspace URL</Label>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span className="rounded-md border border-border bg-muted/30 px-2 py-2 font-mono">steezr.app/</span>
+                <span className="rounded-md border border-border bg-muted/30 px-2 py-2 font-mono">openrow.app/</span>
                 <Input
                   id="org_slug"
                   className="font-mono"

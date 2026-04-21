@@ -9,11 +9,11 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
-	"github.com/steezrcom/steezr-erp/internal/entities"
-	"github.com/steezrcom/steezr-erp/internal/reports"
+	"github.com/openrow/openrow/internal/entities"
+	"github.com/openrow/openrow/internal/reports"
 )
 
-const agentSystemPrompt = `You are the assistant inside steezr, an AI-native ERP.
+const agentSystemPrompt = `You are the assistant inside OpenRow, an AI-native ERP.
 
 You design and operate the user's database through tools. Each user turn: use tools as needed, then briefly describe what you did (1-3 sentences max, no preamble). If no action is required, just answer.
 

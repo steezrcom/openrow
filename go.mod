@@ -1,4 +1,4 @@
-module github.com/steezrcom/steezr-erp
+module github.com/openrow/openrow
 
 go 1.25.6
 

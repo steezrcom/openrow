@@ -97,7 +97,7 @@ export const useTimer = create<TimerState>()(
       updateDescription: (description) => set({ description }),
     }),
     {
-      name: 'steezr.timer',
+      name: 'openrow.timer',
       version: 1,
     }
   )

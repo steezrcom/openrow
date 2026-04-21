@@ -31,7 +31,7 @@ db-down:
 	docker compose down
 
 db-psql:
-	docker compose exec postgres psql -U steezr -d steezr_erp
+	docker compose exec postgres psql -U openrow -d openrow
 
 test:
 	go test ./...

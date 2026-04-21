@@ -72,7 +72,7 @@ export function AuthShell({
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
           <div className="text-lg font-semibold tracking-tight">
-            steezr<span className="text-primary">_</span>
+            OpenRow<span className="text-primary">.</span>
           </div>
           <h1 className="mt-6 text-xl font-semibold">{title}</h1>
           {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}

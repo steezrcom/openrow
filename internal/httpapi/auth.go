@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/steezrcom/steezr-erp/internal/auth"
+	"github.com/openrow/openrow/internal/auth"
 )
 
 type signupReq struct {
@@ -107,8 +107,8 @@ func (s *Server) forgotPassword(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("password reset create", "err", err)
 	} else if token != "" {
 		link := s.appURL + "/reset?token=" + token
-		body := "Hi " + name + ",\n\nReset your steezr password:\n" + link + "\n\nThis link expires in 1 hour. If you didn't ask for this, ignore this email."
-		if err := s.mail.Send(r.Context(), email, "Reset your steezr password", body); err != nil {
+		body := "Hi " + name + ",\n\nReset your OpenRow password:\n" + link + "\n\nThis link expires in 1 hour. If you didn't ask for this, ignore this email."
+		if err := s.mail.Send(r.Context(), email, "Reset your OpenRow password", body); err != nil {
 			s.log.Error("send reset email", "err", err)
 		}
 	}

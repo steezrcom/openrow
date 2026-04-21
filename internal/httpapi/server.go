@@ -4,13 +4,13 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/steezrcom/steezr-erp/internal/ai"
-	"github.com/steezrcom/steezr-erp/internal/auth"
-	"github.com/steezrcom/steezr-erp/internal/entities"
-	"github.com/steezrcom/steezr-erp/internal/mailer"
-	"github.com/steezrcom/steezr-erp/internal/reports"
-	"github.com/steezrcom/steezr-erp/internal/spa"
-	"github.com/steezrcom/steezr-erp/internal/tenant"
+	"github.com/openrow/openrow/internal/ai"
+	"github.com/openrow/openrow/internal/auth"
+	"github.com/openrow/openrow/internal/entities"
+	"github.com/openrow/openrow/internal/mailer"
+	"github.com/openrow/openrow/internal/reports"
+	"github.com/openrow/openrow/internal/spa"
+	"github.com/openrow/openrow/internal/tenant"
 )
 
 type Server struct {

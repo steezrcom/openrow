@@ -41,7 +41,7 @@ func (s *Service) Create(ctx context.Context, slug, name string) (*Tenant, error
 
 	var id string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO steezr.tenants (slug, name, pg_schema)
+		INSERT INTO openrow.tenants (slug, name, pg_schema)
 		VALUES ($1, $2, $3)
 		RETURNING id`,
 		slug, name, pgSchema,
@@ -65,7 +65,7 @@ func (s *Service) BySlug(ctx context.Context, slug string) (*Tenant, error) {
 	var t Tenant
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, slug, name, pg_schema
-		FROM steezr.tenants
+		FROM openrow.tenants
 		WHERE slug = $1`, slug,
 	).Scan(&t.ID, &t.Slug, &t.Name, &t.PGSchema)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -80,7 +80,7 @@ func (s *Service) BySlug(ctx context.Context, slug string) (*Tenant, error) {
 func (s *Service) List(ctx context.Context) ([]Tenant, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, slug, name, pg_schema
-		FROM steezr.tenants
+		FROM openrow.tenants
 		ORDER BY name`)
 	if err != nil {
 		return nil, err

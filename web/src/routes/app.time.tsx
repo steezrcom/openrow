@@ -283,7 +283,7 @@ function CellEditor({
         project: projectID,
         date,
         hours: String(hours),
-        person: (JSON.parse(localStorage.getItem('steezr.lastPerson') || '""') as string) || 'me',
+        person: (JSON.parse(localStorage.getItem('openrow.lastPerson') || '""') as string) || 'me',
       }
       if (taskID) values.task = taskID
       return api.createRow('time_entries', values)

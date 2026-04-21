@@ -1,6 +1,6 @@
-CREATE TABLE steezr.dashboards (
+CREATE TABLE openrow.dashboards (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id   UUID NOT NULL REFERENCES steezr.tenants(id) ON DELETE CASCADE,
+    tenant_id   UUID NOT NULL REFERENCES openrow.tenants(id) ON DELETE CASCADE,
     name        TEXT NOT NULL,
     slug        TEXT NOT NULL,
     description TEXT,
@@ -10,11 +10,11 @@ CREATE TABLE steezr.dashboards (
     UNIQUE (tenant_id, slug)
 );
 
-CREATE INDEX dashboards_tenant_idx ON steezr.dashboards (tenant_id);
+CREATE INDEX dashboards_tenant_idx ON openrow.dashboards (tenant_id);
 
-CREATE TABLE steezr.reports (
+CREATE TABLE openrow.reports (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    dashboard_id  UUID NOT NULL REFERENCES steezr.dashboards(id) ON DELETE CASCADE,
+    dashboard_id  UUID NOT NULL REFERENCES openrow.dashboards(id) ON DELETE CASCADE,
     title         TEXT NOT NULL,
     subtitle      TEXT,
     widget_type   TEXT NOT NULL,
@@ -25,4 +25,4 @@ CREATE TABLE steezr.reports (
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX reports_dashboard_idx ON steezr.reports (dashboard_id);
+CREATE INDEX reports_dashboard_idx ON openrow.reports (dashboard_id);

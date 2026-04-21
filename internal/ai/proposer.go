@@ -9,7 +9,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
-	"github.com/steezrcom/steezr-erp/internal/entities"
+	"github.com/openrow/openrow/internal/entities"
 )
 
 const toolName = "propose_entity"

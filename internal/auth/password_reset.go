@@ -30,7 +30,7 @@ func (s *PasswordResetService) Create(ctx context.Context, email string) (token,
 	}
 	var userID string
 	err = s.pool.QueryRow(ctx, `
-		SELECT id, email, name FROM steezr.users WHERE email = $1`, em,
+		SELECT id, email, name FROM openrow.users WHERE email = $1`, em,
 	).Scan(&userID, &userEmail, &userName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", "", "", nil
@@ -44,7 +44,7 @@ func (s *PasswordResetService) Create(ctx context.Context, email string) (token,
 	}
 	expires := time.Now().UTC().Add(passwordResetLifetime)
 	if _, err := s.pool.Exec(ctx, `
-		INSERT INTO steezr.password_resets (token, user_id, expires_at) VALUES ($1, $2, $3)`,
+		INSERT INTO openrow.password_resets (token, user_id, expires_at) VALUES ($1, $2, $3)`,
 		tok, userID, expires,
 	); err != nil {
 		return "", "", "", err
@@ -70,7 +70,7 @@ func (s *PasswordResetService) Consume(ctx context.Context, token, newPassword s
 	)
 	err = tx.QueryRow(ctx, `
 		SELECT user_id, expires_at, used_at
-		FROM steezr.password_resets
+		FROM openrow.password_resets
 		WHERE token = $1`, token,
 	).Scan(&userID, &expiresAt, &usedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -91,19 +91,19 @@ func (s *PasswordResetService) Consume(ctx context.Context, token, newPassword s
 		return err
 	}
 	if _, err := tx.Exec(ctx,
-		`UPDATE steezr.users SET password_hash = $1, updated_at = now() WHERE id = $2`,
+		`UPDATE openrow.users SET password_hash = $1, updated_at = now() WHERE id = $2`,
 		hash, userID,
 	); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx,
-		`UPDATE steezr.password_resets SET used_at = now() WHERE token = $1`, token,
+		`UPDATE openrow.password_resets SET used_at = now() WHERE token = $1`, token,
 	); err != nil {
 		return err
 	}
 	// Revoke every existing session for this user — reset always implies they lost control.
 	if _, err := tx.Exec(ctx,
-		`DELETE FROM steezr.sessions WHERE user_id = $1`, userID,
+		`DELETE FROM openrow.sessions WHERE user_id = $1`, userID,
 	); err != nil {
 		return err
 	}

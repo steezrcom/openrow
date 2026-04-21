@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/steezrcom/steezr-erp/internal/entities"
+	"github.com/openrow/openrow/internal/entities"
 )
 
 // Result is the normalized output of a QuerySpec.

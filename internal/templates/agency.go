@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/steezrcom/steezr-erp/internal/entities"
-	"github.com/steezrcom/steezr-erp/internal/reports"
+	"github.com/openrow/openrow/internal/entities"
+	"github.com/openrow/openrow/internal/reports"
 )
 
 func init() {

@@ -3,8 +3,8 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/steezrcom/steezr-erp/internal/auth"
-	"github.com/steezrcom/steezr-erp/internal/templates"
+	"github.com/openrow/openrow/internal/auth"
+	"github.com/openrow/openrow/internal/templates"
 )
 
 type templateDTO struct {

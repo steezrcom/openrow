@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/steezrcom/steezr-erp/internal/auth"
+	"github.com/openrow/openrow/internal/auth"
 )
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

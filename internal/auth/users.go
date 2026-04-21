@@ -65,7 +65,7 @@ func (s *UserService) Signup(ctx context.Context, email, name, password string) 
 
 	var u User
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO steezr.users (email, name, password_hash)
+		INSERT INTO openrow.users (email, name, password_hash)
 		VALUES ($1, $2, $3)
 		RETURNING id, email, name, email_verified_at, created_at`,
 		em, name, hash,
@@ -91,7 +91,7 @@ func (s *UserService) Authenticate(ctx context.Context, email, password string) 
 	)
 	err = s.pool.QueryRow(ctx, `
 		SELECT id, email, name, email_verified_at, created_at, password_hash
-		FROM steezr.users
+		FROM openrow.users
 		WHERE email = $1`, em,
 	).Scan(&u.ID, &u.Email, &u.Name, &u.EmailVerifiedAt, &u.CreatedAt, &hash)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -115,7 +115,7 @@ func (s *UserService) ByID(ctx context.Context, id string) (*User, error) {
 	var u User
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, email, name, email_verified_at, created_at
-		FROM steezr.users
+		FROM openrow.users
 		WHERE id = $1`, id,
 	).Scan(&u.ID, &u.Email, &u.Name, &u.EmailVerifiedAt, &u.CreatedAt)
 	if err != nil {
