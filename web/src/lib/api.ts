@@ -56,7 +56,7 @@ export interface RefOption {
   Label: string
 }
 
-export type WidgetType = 'kpi' | 'bar' | 'line' | 'pie' | 'table'
+export type WidgetType = 'kpi' | 'bar' | 'line' | 'area' | 'pie' | 'table'
 
 export interface QuerySpec {
   entity: string
@@ -66,9 +66,19 @@ export interface QuerySpec {
     value?: unknown
   }[]
   group_by?: { field: string; bucket?: '' | 'day' | 'week' | 'month' | 'quarter' | 'year' }
+  series_by?: { field: string; bucket?: '' | 'day' | 'week' | 'month' | 'quarter' | 'year' }
   aggregate?: { fn: 'count' | 'sum' | 'avg' | 'min' | 'max'; field?: string }
   sort?: { field: string; dir: 'asc' | 'desc' }
   limit?: number
+  date_filter_field?: string
+  compare_period?: '' | 'previous_period' | 'previous_year'
+}
+
+export interface ReportOptions {
+  stacked?: boolean
+  number_format?: 'integer' | 'decimal' | 'currency' | 'percent'
+  currency_code?: string
+  locale?: string
 }
 
 export interface Report {
@@ -78,6 +88,7 @@ export interface Report {
   subtitle?: string
   widget_type: WidgetType
   query_spec: QuerySpec
+  options?: ReportOptions
   width: number
   position: number
   created_at: string
@@ -283,6 +294,7 @@ export const api = {
     widget_type?: WidgetType
     width?: number
     query_spec?: QuerySpec
+    options?: ReportOptions
   }) =>
     request<void>(`/api/v1/reports/${encodeURIComponent(id)}`, {
       method: 'PATCH',

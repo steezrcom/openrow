@@ -175,23 +175,46 @@ function ReportEditDrawer({
   onClose: () => void
 }) {
   const qc = useQueryClient()
-  const { register, handleSubmit, reset, formState: { isSubmitting } } =
-    useForm<{ title: string; subtitle: string; width: number }>()
+  type FormValues = {
+    title: string
+    subtitle: string
+    width: number
+    stacked: boolean
+    number_format: 'decimal' | 'integer' | 'currency' | 'percent'
+    currency_code: string
+  }
+  const { register, handleSubmit, reset, watch, formState: { isSubmitting } } = useForm<FormValues>()
+  const numberFormat = watch('number_format')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (report) {
-      reset({ title: report.title, subtitle: report.subtitle ?? '', width: report.width })
+      const opts = report.options ?? {}
+      reset({
+        title: report.title,
+        subtitle: report.subtitle ?? '',
+        width: report.width,
+        stacked: Boolean(opts.stacked),
+        number_format: (opts.number_format as FormValues['number_format']) ?? 'decimal',
+        currency_code: opts.currency_code ?? '',
+      })
       setError(null)
     }
   }, [report, reset])
 
+  const canStack = report?.widget_type === 'bar' || report?.widget_type === 'area'
+
   const mut = useMutation({
-    mutationFn: (body: { title: string; subtitle: string; width: number }) =>
+    mutationFn: (v: FormValues) =>
       api.updateReport(report!.id, {
-        title: body.title,
-        subtitle: body.subtitle,
-        width: Number(body.width),
+        title: v.title,
+        subtitle: v.subtitle,
+        width: Number(v.width),
+        options: {
+          stacked: canStack ? Boolean(v.stacked) : undefined,
+          number_format: v.number_format,
+          currency_code: v.number_format === 'currency' ? (v.currency_code || 'USD') : undefined,
+        },
       }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['dashboard'] })
@@ -201,6 +224,9 @@ function ReportEditDrawer({
     onError: (err) => setError(err instanceof ApiError ? err.message : 'failed'),
   })
 
+  const selectClass =
+    'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm'
+
   return (
     <Drawer
       open={report !== null}
@@ -208,10 +234,7 @@ function ReportEditDrawer({
       title="Edit report"
       subtitle={report?.title}
     >
-      <form
-        className="space-y-5"
-        onSubmit={handleSubmit((v) => mut.mutate({ ...v, width: Number(v.width) }))}
-      >
+      <form className="space-y-5" onSubmit={handleSubmit((v) => mut.mutate(v))}>
         <div className="space-y-1.5">
           <Label>Title</Label>
           <Input {...register('title', { required: true })} />
@@ -224,6 +247,34 @@ function ReportEditDrawer({
           <Label>Width (1–12 columns)</Label>
           <Input type="number" min={1} max={12} step={1} {...register('width', { required: true })} />
         </div>
+
+        <div className="space-y-3 border-t border-border pt-4">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            Display options
+          </p>
+          <div className="space-y-1.5">
+            <Label>Number format</Label>
+            <select className={selectClass} {...register('number_format')}>
+              <option value="decimal">Decimal (1,234.56)</option>
+              <option value="integer">Integer (1,234)</option>
+              <option value="currency">Currency</option>
+              <option value="percent">Percent (0–1 → %)</option>
+            </select>
+          </div>
+          {numberFormat === 'currency' && (
+            <div className="space-y-1.5">
+              <Label>Currency code</Label>
+              <Input placeholder="CZK / USD / EUR" {...register('currency_code')} />
+            </div>
+          )}
+          {canStack && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" className="h-4 w-4 rounded border-input" {...register('stacked')} />
+              <span>Stacked (series stack on top of each other)</span>
+            </label>
+          )}
+        </div>
+
         {error && (
           <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {error}
@@ -238,7 +289,7 @@ function ReportEditDrawer({
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          To change the chart type or query, ask Claude in the chat — e.g. "turn this into a pie chart" or "group by month instead."
+          To change the chart type or query (e.g. "group by month instead" or "split by customer"), ask Claude in the chat.
         </p>
       </form>
     </Drawer>

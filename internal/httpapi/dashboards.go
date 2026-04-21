@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/steezrcom/steezr-erp/internal/auth"
+	"github.com/steezrcom/steezr-erp/internal/entities"
 	"github.com/steezrcom/steezr-erp/internal/reports"
 )
 
@@ -121,11 +122,12 @@ func (s *Server) addReport(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateReportReq struct {
-	Title      *string             `json:"title,omitempty"`
-	Subtitle   *string             `json:"subtitle,omitempty"`
-	WidgetType *reports.WidgetType `json:"widget_type,omitempty"`
-	QuerySpec  *reports.QuerySpec  `json:"query_spec,omitempty"`
-	Width      *int                `json:"width,omitempty"`
+	Title      *string                 `json:"title,omitempty"`
+	Subtitle   *string                 `json:"subtitle,omitempty"`
+	WidgetType *reports.WidgetType     `json:"widget_type,omitempty"`
+	QuerySpec  *reports.QuerySpec      `json:"query_spec,omitempty"`
+	Options    *map[string]interface{} `json:"options,omitempty"`
+	Width      *int                    `json:"width,omitempty"`
 }
 
 func (s *Server) patchReport(w http.ResponseWriter, r *http.Request) {
@@ -140,6 +142,7 @@ func (s *Server) patchReport(w http.ResponseWriter, r *http.Request) {
 		Subtitle:   in.Subtitle,
 		WidgetType: in.WidgetType,
 		QuerySpec:  in.QuerySpec,
+		Options:    in.Options,
 		Width:      in.Width,
 	})
 	if err != nil {
@@ -161,6 +164,7 @@ func (s *Server) deleteReport(w http.ResponseWriter, r *http.Request) {
 // executeReport runs the report's query and returns normalized results.
 // Supports ?from=<rfc3339>&to=<rfc3339> to inject filters on the report's
 // date_filter_field (if set). Reports without date_filter_field ignore the range.
+// KPI reports with compare_period also get a previous-window value attached.
 func (s *Server) executeReport(w http.ResponseWriter, r *http.Request) {
 	m, _ := auth.MembershipFromContext(r.Context())
 	report, err := s.dashboards.GetReport(r.Context(), m.TenantID, r.PathValue("id"))
@@ -174,30 +178,69 @@ func (s *Server) executeReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	spec := report.QuerySpec
-	spec.Filters = append([]reports.Filter(nil), spec.Filters...) // copy
+	q := r.URL.Query()
+	from := parseTimeQ(q.Get("from"))
+	to := parseTimeQ(q.Get("to"))
+
+	result, err := s.runWithRange(r, ent, &report.QuerySpec, from, to)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// KPI comparison: when compare_period is set + an actual range is in play,
+	// run the aggregate once more on the shifted window and attach previous_value.
+	if report.WidgetType == reports.WidgetKPI &&
+		report.QuerySpec.ComparePeriod != "" &&
+		report.QuerySpec.DateFilterField != "" &&
+		from != nil && to != nil &&
+		len(result.Rows) > 0 {
+		prevFrom, prevTo := shiftRange(*from, *to, report.QuerySpec.ComparePeriod)
+		prevResult, pErr := s.runWithRange(r, ent, &report.QuerySpec, &prevFrom, &prevTo)
+		if pErr == nil && len(prevResult.Rows) > 0 {
+			result.Rows[0]["previous_value"] = prevResult.Rows[0]["value"]
+			result.Rows[0]["compare_period"] = report.QuerySpec.ComparePeriod
+			result.Rows[0]["previous_from"] = prevFrom.Format(time.RFC3339)
+			result.Rows[0]["previous_to"] = prevTo.Format(time.RFC3339)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"result": result})
+}
+
+// runWithRange runs the spec with optional from/to filters injected on the report's date_filter_field.
+func (s *Server) runWithRange(r *http.Request, ent *entities.Entity, base *reports.QuerySpec, from, to *time.Time) (*reports.Result, error) {
+	m, _ := auth.MembershipFromContext(r.Context())
+	spec := *base
+	spec.Filters = append([]reports.Filter(nil), spec.Filters...)
 	if spec.DateFilterField != "" {
-		q := r.URL.Query()
-		if from := parseTimeQ(q.Get("from")); from != nil {
+		if from != nil {
 			v, _ := json.Marshal(from.Format(time.RFC3339))
 			spec.Filters = append(spec.Filters, reports.Filter{
 				Field: spec.DateFilterField, Op: reports.OpGte, Value: v,
 			})
 		}
-		if to := parseTimeQ(q.Get("to")); to != nil {
+		if to != nil {
 			v, _ := json.Marshal(to.Format(time.RFC3339))
 			spec.Filters = append(spec.Filters, reports.Filter{
 				Field: spec.DateFilterField, Op: reports.OpLt, Value: v,
 			})
 		}
 	}
+	return s.reportExec.Execute(r.Context(), m.PGSchema, m.TenantID, ent, &spec)
+}
 
-	result, err := s.reportExec.Execute(r.Context(), m.PGSchema, m.TenantID, ent, &spec)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
+// shiftRange returns the comparison window for a compare_period setting.
+// "previous_period" = shift back by the window's length; "previous_year" = shift back 1 year.
+func shiftRange(from, to time.Time, period string) (time.Time, time.Time) {
+	switch period {
+	case "previous_year":
+		return from.AddDate(-1, 0, 0), to.AddDate(-1, 0, 0)
+	case "previous_period":
+		d := to.Sub(from)
+		return from.Add(-d), from
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"result": result})
+	return from, to
 }
 
 // parseTimeQ accepts RFC3339 or YYYY-MM-DD. Returns nil for empty or unparseable input.

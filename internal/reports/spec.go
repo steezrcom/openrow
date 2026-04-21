@@ -13,13 +13,14 @@ const (
 	WidgetKPI   WidgetType = "kpi"
 	WidgetBar   WidgetType = "bar"
 	WidgetLine  WidgetType = "line"
+	WidgetArea  WidgetType = "area"
 	WidgetPie   WidgetType = "pie"
 	WidgetTable WidgetType = "table"
 )
 
 func (w WidgetType) Valid() bool {
 	switch w {
-	case WidgetKPI, WidgetBar, WidgetLine, WidgetPie, WidgetTable:
+	case WidgetKPI, WidgetBar, WidgetLine, WidgetArea, WidgetPie, WidgetTable:
 		return true
 	}
 	return false
@@ -110,6 +111,7 @@ type QuerySpec struct {
 	Entity    string     `json:"entity"`
 	Filters   []Filter   `json:"filters,omitempty"`
 	GroupBy   *GroupBy   `json:"group_by,omitempty"`
+	SeriesBy  *GroupBy   `json:"series_by,omitempty"`
 	Aggregate *Aggregate `json:"aggregate,omitempty"`
 	Sort      *Sort      `json:"sort,omitempty"`
 	Limit     int        `json:"limit,omitempty"`
@@ -118,6 +120,12 @@ type QuerySpec struct {
 	// dashboard's date range selector. Empty means the report ignores the
 	// dashboard range (useful for KPIs that should always look at all data).
 	DateFilterField string `json:"date_filter_field,omitempty"`
+
+	// ComparePeriod asks KPI reports to render a delta vs an earlier window.
+	// Only applied when DateFilterField is set and a range is supplied.
+	// "previous_period": immediately preceding window of the same length.
+	// "previous_year":   same window shifted back 1 year.
+	ComparePeriod string `json:"compare_period,omitempty"`
 }
 
 var identRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
@@ -161,6 +169,22 @@ func (s *QuerySpec) Validate() error {
 	}
 	if s.DateFilterField != "" && !identRe.MatchString(s.DateFilterField) {
 		return fmt.Errorf("invalid date_filter_field %q", s.DateFilterField)
+	}
+	if s.SeriesBy != nil {
+		if !identRe.MatchString(s.SeriesBy.Field) {
+			return fmt.Errorf("series_by: invalid field %q", s.SeriesBy.Field)
+		}
+		if !s.SeriesBy.Bucket.Valid() {
+			return fmt.Errorf("series_by: invalid bucket %q", s.SeriesBy.Bucket)
+		}
+		if s.GroupBy == nil || s.Aggregate == nil {
+			return fmt.Errorf("series_by requires both group_by and aggregate")
+		}
+	}
+	switch s.ComparePeriod {
+	case "", "previous_period", "previous_year":
+	default:
+		return fmt.Errorf("compare_period must be previous_period or previous_year")
 	}
 	return nil
 }

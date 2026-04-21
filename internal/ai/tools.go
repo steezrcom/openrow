@@ -555,7 +555,7 @@ func reportSchemaProperties() map[string]any {
 		"subtitle": stringProp("Optional secondary label."),
 		"widget_type": map[string]any{
 			"type": "string",
-			"enum": []string{"kpi", "bar", "line", "pie", "table"},
+			"enum": []string{"kpi", "bar", "line", "area", "pie", "table"},
 		},
 		"width": map[string]any{
 			"type":        "integer",
@@ -565,6 +565,23 @@ func reportSchemaProperties() map[string]any {
 			"type":       "object",
 			"properties": querySpecProperties(),
 			"required":   []string{"entity"},
+		},
+		"options": map[string]any{
+			"type":        "object",
+			"description": "Per-widget render options (all optional).",
+			"properties": map[string]any{
+				"stacked": map[string]any{
+					"type":        "boolean",
+					"description": "Bar charts only. When true with series_by, renders stacked bars; otherwise grouped.",
+				},
+				"number_format": map[string]any{
+					"type":        "string",
+					"enum":        []string{"integer", "decimal", "currency", "percent"},
+					"description": "Formats KPI values, chart tooltips, and axis ticks. Default is decimal.",
+				},
+				"currency_code": stringProp("ISO 4217 code like CZK, USD, EUR. Used when number_format is currency."),
+				"locale":        stringProp("BCP 47 locale like en-US, cs-CZ. Default is the browser's."),
+			},
 		},
 	}
 }
@@ -595,8 +612,21 @@ func querySpecProperties() map[string]any {
 		},
 		"group_by": map[string]any{
 			"type": "object",
+			"description": "Primary grouping: the x-axis for charts.",
 			"properties": map[string]any{
 				"field":  stringProp("Field to group by."),
+				"bucket": map[string]any{
+					"type": "string",
+					"enum": []string{"", "day", "week", "month", "quarter", "year"},
+				},
+			},
+			"required": []string{"field"},
+		},
+		"series_by": map[string]any{
+			"type": "object",
+			"description": "Secondary grouping for bar/line/area charts. Each distinct value becomes its own series (grouped bars, multiple lines). Do NOT use with kpi, pie, or table.",
+			"properties": map[string]any{
+				"field":  stringProp("Field to split series by."),
 				"bucket": map[string]any{
 					"type": "string",
 					"enum": []string{"", "day", "week", "month", "quarter", "year"},
@@ -629,6 +659,11 @@ func querySpecProperties() map[string]any {
 				"Set this on reports whose numbers should change when the user picks a different time window. " +
 				"Leave empty on all-time KPIs.",
 		),
+		"compare_period": map[string]any{
+			"type":        "string",
+			"enum":        []string{"", "previous_period", "previous_year"},
+			"description": "KPI only. When a dashboard range is set, also queries the prior window and renders a delta. 'previous_period' shifts back by the window length; 'previous_year' shifts back 1 year.",
+		},
 	}
 }
 

@@ -1,5 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -14,8 +17,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { AlertTriangle, Loader2, Pencil, Trash2 } from 'lucide-react'
-import { api, type Report } from '@/lib/api'
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { api, type Report, type ReportOptions } from '@/lib/api'
 import { Card } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
@@ -109,67 +112,186 @@ function ReportBody({ report, data }: { report: Report; data: { shape: string; r
       </div>
     )
   }
+  const options = report.options ?? {}
   switch (report.widget_type) {
     case 'kpi':
-      return <KPIView row={data.rows[0]} />
+      return <KPIView row={data.rows[0]} options={options} />
     case 'bar':
-      return <BarView rows={data.rows} />
+      return <BarView rows={data.rows} options={options} />
     case 'line':
-      return <LineView rows={data.rows} />
+      return <LineView rows={data.rows} options={options} />
+    case 'area':
+      return <AreaView rows={data.rows} options={options} />
     case 'pie':
-      return <PieView rows={data.rows} />
+      return <PieView rows={data.rows} options={options} />
     case 'table':
       return <TableView rows={data.rows} />
   }
   return null
 }
 
-function KPIView({ row }: { row: Record<string, unknown> }) {
-  const raw = row.value
+function KPIView({ row, options }: { row: Record<string, unknown>; options: ReportOptions }) {
+  const fmt = makeFormatter(options)
+  const value = asNumber(row.value)
+  const previous = row.previous_value == null ? null : asNumber(row.previous_value)
+  const delta = previous != null && previous !== 0 ? (value - previous) / previous : null
+  const comparePeriod = typeof row.compare_period === 'string' ? row.compare_period : ''
+
   return (
-    <div className="flex h-full items-center">
-      <span className="text-4xl font-semibold tracking-tight">{formatNumber(raw)}</span>
+    <div className="flex h-full flex-col justify-center">
+      <span className="text-4xl font-semibold tracking-tight">{fmt.format(value)}</span>
+      {previous != null && (
+        <div className="mt-2 flex items-center gap-2 text-xs">
+          {delta != null && (
+            <span
+              className={cn(
+                'inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-medium',
+                delta >= 0
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-destructive/10 text-destructive'
+              )}
+            >
+              {delta >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+              {Math.abs(delta * 100).toFixed(1)}%
+            </span>
+          )}
+          <span className="text-muted-foreground">
+            vs {comparePeriod === 'previous_year' ? 'last year' : 'previous period'} ({fmt.format(previous)})
+          </span>
+        </div>
+      )}
     </div>
   )
 }
 
-function BarView({ rows }: { rows: Record<string, unknown>[] }) {
-  const data = rows.map((r) => ({
-    label: formatLabel(r.label),
-    value: asNumber(r.value),
-  }))
+function BarView({ rows, options }: { rows: Record<string, unknown>[]; options: ReportOptions }) {
+  const fmt = makeFormatter(options)
+  const hasSeries = rows.length > 0 && 'series' in rows[0]
+  if (!hasSeries) {
+    const data = rows.map((r) => ({ label: formatLabel(r.label), value: asNumber(r.value) }))
+    return (
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f2024" />
+          <XAxis dataKey="label" tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" />
+          <YAxis tickFormatter={(v) => fmt.format(Number(v))} tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" width={60} />
+          <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#ffffff08' }} formatter={(v) => fmt.format(asNumber(v))} />
+          <Bar dataKey="value" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    )
+  }
+  const { data, seriesKeys } = pivotSeries(rows)
+  const stackId = options.stacked ? 'a' : undefined
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={240}>
       <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#1f2024" />
         <XAxis dataKey="label" tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" />
-        <YAxis tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" />
-        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#ffffff08' }} />
-        <Bar dataKey="value" fill="#6ee7b7" radius={[4, 4, 0, 0]} />
+        <YAxis tickFormatter={(v) => fmt.format(Number(v))} tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" width={60} />
+        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#ffffff08' }} formatter={(v) => fmt.format(asNumber(v))} />
+        <Legend wrapperStyle={legendStyle} />
+        {seriesKeys.map((key, i) => (
+          <Bar
+            key={key}
+            dataKey={key}
+            fill={CHART_COLORS[i % CHART_COLORS.length]}
+            stackId={stackId}
+            radius={options.stacked ? undefined : [4, 4, 0, 0]}
+          />
+        ))}
       </BarChart>
     </ResponsiveContainer>
   )
 }
 
-function LineView({ rows }: { rows: Record<string, unknown>[] }) {
-  const data = rows.map((r) => ({
-    label: formatLabel(r.label),
-    value: asNumber(r.value),
-  }))
+function LineView({ rows, options }: { rows: Record<string, unknown>[]; options: ReportOptions }) {
+  const fmt = makeFormatter(options)
+  const hasSeries = rows.length > 0 && 'series' in rows[0]
+  if (!hasSeries) {
+    const data = rows.map((r) => ({ label: formatLabel(r.label), value: asNumber(r.value) }))
+    return (
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f2024" />
+          <XAxis dataKey="label" tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" />
+          <YAxis tickFormatter={(v) => fmt.format(Number(v))} tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" width={60} />
+          <Tooltip contentStyle={tooltipStyle} formatter={(v) => fmt.format(asNumber(v))} />
+          <Line type="monotone" dataKey="value" stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ fill: CHART_COLORS[0], r: 3 }} />
+        </LineChart>
+      </ResponsiveContainer>
+    )
+  }
+  const { data, seriesKeys } = pivotSeries(rows)
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={240}>
       <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#1f2024" />
         <XAxis dataKey="label" tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" />
-        <YAxis tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" />
-        <Tooltip contentStyle={tooltipStyle} />
-        <Line type="monotone" dataKey="value" stroke="#6ee7b7" strokeWidth={2} dot={{ fill: '#6ee7b7', r: 3 }} />
+        <YAxis tickFormatter={(v) => fmt.format(Number(v))} tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" width={60} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(v) => fmt.format(asNumber(v))} />
+        <Legend wrapperStyle={legendStyle} />
+        {seriesKeys.map((key, i) => (
+          <Line
+            key={key}
+            type="monotone"
+            dataKey={key}
+            stroke={CHART_COLORS[i % CHART_COLORS.length]}
+            strokeWidth={2}
+            dot={false}
+          />
+        ))}
       </LineChart>
     </ResponsiveContainer>
   )
 }
 
-function PieView({ rows }: { rows: Record<string, unknown>[] }) {
+function AreaView({ rows, options }: { rows: Record<string, unknown>[]; options: ReportOptions }) {
+  const fmt = makeFormatter(options)
+  const hasSeries = rows.length > 0 && 'series' in rows[0]
+  const stackId = options.stacked ? 'a' : undefined
+
+  if (!hasSeries) {
+    const data = rows.map((r) => ({ label: formatLabel(r.label), value: asNumber(r.value) }))
+    return (
+      <ResponsiveContainer width="100%" height={220}>
+        <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f2024" />
+          <XAxis dataKey="label" tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" />
+          <YAxis tickFormatter={(v) => fmt.format(Number(v))} tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" width={60} />
+          <Tooltip contentStyle={tooltipStyle} formatter={(v) => fmt.format(asNumber(v))} />
+          <Area type="monotone" dataKey="value" stroke={CHART_COLORS[0]} fill={CHART_COLORS[0]} fillOpacity={0.2} />
+        </AreaChart>
+      </ResponsiveContainer>
+    )
+  }
+  const { data, seriesKeys } = pivotSeries(rows)
+  return (
+    <ResponsiveContainer width="100%" height={240}>
+      <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#1f2024" />
+        <XAxis dataKey="label" tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" />
+        <YAxis tickFormatter={(v) => fmt.format(Number(v))} tick={{ fill: '#8a8a8a', fontSize: 11 }} stroke="#1f2024" width={60} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(v) => fmt.format(asNumber(v))} />
+        <Legend wrapperStyle={legendStyle} />
+        {seriesKeys.map((key, i) => (
+          <Area
+            key={key}
+            type="monotone"
+            dataKey={key}
+            stroke={CHART_COLORS[i % CHART_COLORS.length]}
+            fill={CHART_COLORS[i % CHART_COLORS.length]}
+            fillOpacity={0.2}
+            stackId={stackId}
+          />
+        ))}
+      </AreaChart>
+    </ResponsiveContainer>
+  )
+}
+
+function PieView({ rows, options }: { rows: Record<string, unknown>[]; options: ReportOptions }) {
+  const fmt = makeFormatter(options)
   const data = rows.map((r) => ({
     label: formatLabel(r.label),
     value: asNumber(r.value),
@@ -182,15 +304,14 @@ function PieView({ rows }: { rows: Record<string, unknown>[] }) {
             <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} stroke="#0b0c0e" />
           ))}
         </Pie>
-        <Tooltip contentStyle={tooltipStyle} />
-        <Legend wrapperStyle={{ color: '#8a8a8a', fontSize: 11 }} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(v) => fmt.format(asNumber(v))} />
+        <Legend wrapperStyle={legendStyle} />
       </PieChart>
     </ResponsiveContainer>
   )
 }
 
 function TableView({ rows }: { rows: Record<string, unknown>[] }) {
-  // Collapse <field>__label pairs: hide the raw id column when a label sibling exists.
   const allKeys = Object.keys(rows[0])
   const labelKeys = new Set(
     allKeys.filter((k) => k.endsWith('__label')).map((k) => k.replace(/__label$/, ''))
@@ -227,12 +348,19 @@ function TableView({ rows }: { rows: Record<string, unknown>[] }) {
   )
 }
 
+// -------- helpers --------
+
 const tooltipStyle: React.CSSProperties = {
   background: '#131418',
   border: '1px solid #1f2024',
   borderRadius: 6,
   color: '#e6e6e6',
   fontSize: 12,
+}
+const legendStyle: React.CSSProperties = {
+  color: '#8a8a8a',
+  fontSize: 11,
+  paddingTop: 8,
 }
 
 function widthClass(width: number): string {
@@ -253,11 +381,23 @@ function asNumber(v: unknown): number {
   return 0
 }
 
-function formatNumber(v: unknown): string {
-  const n = asNumber(v)
-  return new Intl.NumberFormat(undefined, {
-    maximumFractionDigits: 2,
-  }).format(n)
+function makeFormatter(options: ReportOptions): Intl.NumberFormat {
+  const opts: Intl.NumberFormatOptions = { maximumFractionDigits: 2 }
+  switch (options.number_format) {
+    case 'currency':
+      opts.style = 'currency'
+      opts.currency = options.currency_code || 'USD'
+      opts.maximumFractionDigits = 0
+      break
+    case 'percent':
+      opts.style = 'percent'
+      opts.maximumFractionDigits = 1
+      break
+    case 'integer':
+      opts.maximumFractionDigits = 0
+      break
+  }
+  return new Intl.NumberFormat(options.locale || undefined, opts)
 }
 
 function formatLabel(v: unknown): string {
@@ -281,4 +421,34 @@ function formatCell(v: unknown): string {
     if (!isNaN(d.getTime())) return d.toISOString().slice(0, 16).replace('T', ' ')
   }
   return String(v)
+}
+
+// Pivots rows of shape {label, series, value} into {label, <series1>: v, <series2>: v, ...}
+// preserving label order and returning the list of unique series keys.
+function pivotSeries(rows: Record<string, unknown>[]): {
+  data: Record<string, unknown>[]
+  seriesKeys: string[]
+} {
+  const seriesSet = new Set<string>()
+  const byLabel = new Map<string, Record<string, unknown>>()
+  for (const r of rows) {
+    const label = formatLabel(r.label)
+    const series = formatLabel(r.series)
+    seriesSet.add(series)
+    let row = byLabel.get(label)
+    if (!row) {
+      row = { label }
+      byLabel.set(label, row)
+    }
+    row[series] = asNumber(r.value)
+  }
+  return {
+    data: Array.from(byLabel.values()),
+    seriesKeys: Array.from(seriesSet),
+  }
+}
+
+// We memoize pivotSeries per rows reference; consumers can wrap with useMemo.
+export function usePivotedSeries(rows: Record<string, unknown>[]) {
+  return useMemo(() => pivotSeries(rows), [rows])
 }

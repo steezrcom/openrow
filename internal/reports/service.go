@@ -26,16 +26,17 @@ type Dashboard struct {
 }
 
 type Report struct {
-	ID          string     `json:"id"`
-	DashboardID string     `json:"dashboard_id"`
-	Title       string     `json:"title"`
-	Subtitle    string     `json:"subtitle,omitempty"`
-	WidgetType  WidgetType `json:"widget_type"`
-	QuerySpec   QuerySpec  `json:"query_spec"`
-	Width       int        `json:"width"`
-	Position    int        `json:"position"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID          string                 `json:"id"`
+	DashboardID string                 `json:"dashboard_id"`
+	Title       string                 `json:"title"`
+	Subtitle    string                 `json:"subtitle,omitempty"`
+	WidgetType  WidgetType             `json:"widget_type"`
+	QuerySpec   QuerySpec              `json:"query_spec"`
+	Options     map[string]interface{} `json:"options"`
+	Width       int                    `json:"width"`
+	Position    int                    `json:"position"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
 }
 
 type Service struct {
@@ -73,11 +74,12 @@ type CreateDashboardInput struct {
 }
 
 type CreateReportInput struct {
-	Title      string     `json:"title"`
-	Subtitle   string     `json:"subtitle,omitempty"`
-	WidgetType WidgetType `json:"widget_type"`
-	QuerySpec  QuerySpec  `json:"query_spec"`
-	Width      int        `json:"width,omitempty"`
+	Title      string                 `json:"title"`
+	Subtitle   string                 `json:"subtitle,omitempty"`
+	WidgetType WidgetType             `json:"widget_type"`
+	QuerySpec  QuerySpec              `json:"query_spec"`
+	Options    map[string]interface{} `json:"options,omitempty"`
+	Width      int                    `json:"width,omitempty"`
 }
 
 // Create inserts the dashboard + reports in one transaction.
@@ -121,10 +123,11 @@ func (s *Service) Create(ctx context.Context, tenantID string, in CreateDashboar
 			width = 6
 		}
 		spec, _ := json.Marshal(r.QuerySpec)
+		opts, _ := json.Marshal(marshalOptions(r.Options))
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO steezr.reports (dashboard_id, title, subtitle, widget_type, query_spec, width, position)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			id, r.Title, nullIfEmpty(r.Subtitle), string(r.WidgetType), spec, width, i,
+			INSERT INTO steezr.reports (dashboard_id, title, subtitle, widget_type, query_spec, options, width, position)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			id, r.Title, nullIfEmpty(r.Subtitle), string(r.WidgetType), spec, opts, width, i,
 		); err != nil {
 			return nil, fmt.Errorf("insert report %d: %w", i, err)
 		}
@@ -151,13 +154,26 @@ func validateReportInput(r CreateReportInput) error {
 		if r.QuerySpec.Aggregate == nil || r.QuerySpec.GroupBy != nil {
 			return errors.New("kpi needs an aggregate and no group_by")
 		}
-	case WidgetBar, WidgetLine, WidgetPie:
+		if r.QuerySpec.SeriesBy != nil {
+			return errors.New("kpi does not support series_by")
+		}
+	case WidgetBar, WidgetLine, WidgetArea:
 		if r.QuerySpec.Aggregate == nil || r.QuerySpec.GroupBy == nil {
 			return errors.New(string(r.WidgetType) + " needs both aggregate and group_by")
+		}
+	case WidgetPie:
+		if r.QuerySpec.Aggregate == nil || r.QuerySpec.GroupBy == nil {
+			return errors.New("pie needs both aggregate and group_by")
+		}
+		if r.QuerySpec.SeriesBy != nil {
+			return errors.New("pie does not support series_by")
 		}
 	case WidgetTable:
 		if r.QuerySpec.Aggregate != nil {
 			return errors.New("table must not have an aggregate")
+		}
+		if r.QuerySpec.SeriesBy != nil {
+			return errors.New("table does not support series_by")
 		}
 	}
 	return nil
@@ -168,6 +184,13 @@ func nullIfEmpty(s string) interface{} {
 		return nil
 	}
 	return s
+}
+
+func marshalOptions(opts map[string]interface{}) map[string]interface{} {
+	if opts == nil {
+		return map[string]interface{}{}
+	}
+	return opts
 }
 
 func (s *Service) List(ctx context.Context, tenantID string) ([]Dashboard, error) {
@@ -208,7 +231,7 @@ func (s *Service) Get(ctx context.Context, tenantID, slug string) (*Dashboard, e
 	}
 
 	rep, err := s.pool.Query(ctx, `
-		SELECT id, dashboard_id, title, COALESCE(subtitle, ''), widget_type, query_spec, width, position, created_at, updated_at
+		SELECT id, dashboard_id, title, COALESCE(subtitle, ''), widget_type, query_spec, options, width, position, created_at, updated_at
 		FROM steezr.reports
 		WHERE dashboard_id = $1
 		ORDER BY position`, d.ID)
@@ -220,14 +243,18 @@ func (s *Service) Get(ctx context.Context, tenantID, slug string) (*Dashboard, e
 	for rep.Next() {
 		var r Report
 		var wt string
-		var spec []byte
-		if err := rep.Scan(&r.ID, &r.DashboardID, &r.Title, &r.Subtitle, &wt, &spec,
+		var spec, opts []byte
+		if err := rep.Scan(&r.ID, &r.DashboardID, &r.Title, &r.Subtitle, &wt, &spec, &opts,
 			&r.Width, &r.Position, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, err
 		}
 		r.WidgetType = WidgetType(wt)
 		if err := json.Unmarshal(spec, &r.QuerySpec); err != nil {
 			return nil, fmt.Errorf("decode report %s: %w", r.ID, err)
+		}
+		r.Options = map[string]interface{}{}
+		if len(opts) > 0 {
+			_ = json.Unmarshal(opts, &r.Options)
 		}
 		reports = append(reports, r)
 	}
@@ -303,31 +330,37 @@ func (s *Service) AddReport(ctx context.Context, tenantID, slug string, in Creat
 		width = 6
 	}
 	spec, _ := json.Marshal(in.QuerySpec)
+	opts, _ := json.Marshal(marshalOptions(in.Options))
 	var r Report
 	var wt string
-	var specBytes []byte
+	var specBytes, optsBytes []byte
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO steezr.reports (dashboard_id, title, subtitle, widget_type, query_spec, width, position)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, dashboard_id, title, COALESCE(subtitle, ''), widget_type, query_spec, width, position, created_at, updated_at`,
-		dash.ID, in.Title, nullIfEmpty(in.Subtitle), string(in.WidgetType), spec, width, len(dash.Reports),
-	).Scan(&r.ID, &r.DashboardID, &r.Title, &r.Subtitle, &wt, &specBytes,
+		INSERT INTO steezr.reports (dashboard_id, title, subtitle, widget_type, query_spec, options, width, position)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, dashboard_id, title, COALESCE(subtitle, ''), widget_type, query_spec, options, width, position, created_at, updated_at`,
+		dash.ID, in.Title, nullIfEmpty(in.Subtitle), string(in.WidgetType), spec, opts, width, len(dash.Reports),
+	).Scan(&r.ID, &r.DashboardID, &r.Title, &r.Subtitle, &wt, &specBytes, &optsBytes,
 		&r.Width, &r.Position, &r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	r.WidgetType = WidgetType(wt)
 	_ = json.Unmarshal(specBytes, &r.QuerySpec)
+	r.Options = map[string]interface{}{}
+	if len(optsBytes) > 0 {
+		_ = json.Unmarshal(optsBytes, &r.Options)
+	}
 	return &r, nil
 }
 
 // UpdateReport replaces mutable fields of a report.
 type UpdateReportInput struct {
-	Title      *string     `json:"title,omitempty"`
-	Subtitle   *string     `json:"subtitle,omitempty"`
-	WidgetType *WidgetType `json:"widget_type,omitempty"`
-	QuerySpec  *QuerySpec  `json:"query_spec,omitempty"`
-	Width      *int        `json:"width,omitempty"`
+	Title      *string                 `json:"title,omitempty"`
+	Subtitle   *string                 `json:"subtitle,omitempty"`
+	WidgetType *WidgetType             `json:"widget_type,omitempty"`
+	QuerySpec  *QuerySpec              `json:"query_spec,omitempty"`
+	Options    *map[string]interface{} `json:"options,omitempty"`
+	Width      *int                    `json:"width,omitempty"`
 }
 
 func (s *Service) UpdateReport(ctx context.Context, tenantID, reportID string, in UpdateReportInput) error {
@@ -383,6 +416,12 @@ func (s *Service) UpdateReport(ctx context.Context, tenantID, reportID string, i
 		}
 		sets = append(sets, fmt.Sprintf("width = $%d", idx))
 		params = append(params, w)
+		idx++
+	}
+	if in.Options != nil {
+		b, _ := json.Marshal(marshalOptions(*in.Options))
+		sets = append(sets, fmt.Sprintf("options = $%d", idx))
+		params = append(params, b)
 		idx++
 	}
 	if len(sets) == 0 {
@@ -452,14 +491,14 @@ func (s *Service) DeleteReport(ctx context.Context, tenantID, reportID string) e
 func (s *Service) GetReport(ctx context.Context, tenantID, reportID string) (*Report, error) {
 	var r Report
 	var wt string
-	var spec []byte
+	var spec, opts []byte
 	err := s.pool.QueryRow(ctx, `
-		SELECT r.id, r.dashboard_id, r.title, COALESCE(r.subtitle, ''), r.widget_type, r.query_spec, r.width, r.position, r.created_at, r.updated_at
+		SELECT r.id, r.dashboard_id, r.title, COALESCE(r.subtitle, ''), r.widget_type, r.query_spec, r.options, r.width, r.position, r.created_at, r.updated_at
 		FROM steezr.reports r
 		JOIN steezr.dashboards d ON d.id = r.dashboard_id
 		WHERE r.id = $1 AND d.tenant_id = $2`,
 		reportID, tenantID,
-	).Scan(&r.ID, &r.DashboardID, &r.Title, &r.Subtitle, &wt, &spec,
+	).Scan(&r.ID, &r.DashboardID, &r.Title, &r.Subtitle, &wt, &spec, &opts,
 		&r.Width, &r.Position, &r.CreatedAt, &r.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("report not found")
@@ -470,6 +509,10 @@ func (s *Service) GetReport(ctx context.Context, tenantID, reportID string) (*Re
 	r.WidgetType = WidgetType(wt)
 	if err := json.Unmarshal(spec, &r.QuerySpec); err != nil {
 		return nil, err
+	}
+	r.Options = map[string]interface{}{}
+	if len(opts) > 0 {
+		_ = json.Unmarshal(opts, &r.Options)
 	}
 	return &r, nil
 }

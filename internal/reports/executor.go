@@ -241,7 +241,7 @@ func (e *Executor) runKPI(ctx context.Context, b *builder, spec *QuerySpec, wher
 }
 
 func (e *Executor) runSeries(ctx context.Context, b *builder, spec *QuerySpec, where string) (*Result, error) {
-	labelExpr, groupExpr, err := b.groupByExpr(ctx, spec.GroupBy)
+	labelExpr, labelGroupExpr, err := b.groupByExpr(ctx, spec.GroupBy)
 	if err != nil {
 		return nil, err
 	}
@@ -250,45 +250,96 @@ func (e *Executor) runSeries(ctx context.Context, b *builder, spec *QuerySpec, w
 		return nil, err
 	}
 
-	limit := spec.Limit
-	if limit <= 0 || limit > 1000 {
-		limit = 500
+	var seriesExpr, seriesGroupExpr string
+	hasSeries := spec.SeriesBy != nil
+	if hasSeries {
+		seriesExpr, seriesGroupExpr, err = b.groupByExpr(ctx, spec.SeriesBy)
+		if err != nil {
+			return nil, err
+		}
 	}
+
+	limit := spec.Limit
+	if limit <= 0 || limit > 2000 {
+		limit = 1000
+	}
+
 	orderBy := "label ASC"
+	if hasSeries {
+		orderBy = "label ASC, series ASC"
+	}
 	if spec.Sort != nil {
 		col := "label"
 		if spec.Sort.Field == "value" {
 			col = "value"
+		} else if spec.Sort.Field == "series" {
+			col = "series"
 		}
 		orderBy = col + " " + strings.ToUpper(spec.Sort.Dir)
 	}
 
-	groupClause := groupExpr
-	if labelExpr != groupExpr {
-		groupClause = groupExpr + ", " + labelExpr
+	// GROUP BY the expressions that identify each bucket. For ref labels the
+	// label expression is a COALESCE on the join column, so we need both the FK
+	// and the label in GROUP BY; same for series.
+	groupByParts := []string{labelGroupExpr}
+	if labelExpr != labelGroupExpr {
+		groupByParts = append(groupByParts, labelExpr)
+	}
+	if hasSeries {
+		groupByParts = append(groupByParts, seriesGroupExpr)
+		if seriesExpr != seriesGroupExpr {
+			groupByParts = append(groupByParts, seriesExpr)
+		}
 	}
 
+	selectParts := []string{labelExpr + " AS label"}
+	if hasSeries {
+		selectParts = append(selectParts, seriesExpr+" AS series")
+	}
+	selectParts = append(selectParts, aggExpr+" AS value")
+
 	q := fmt.Sprintf(
-		"SELECT %s AS label, %s AS value FROM %s%s GROUP BY %s ORDER BY %s LIMIT %d",
-		labelExpr, aggExpr, b.fromClause(), where, groupClause, orderBy, limit,
+		"SELECT %s FROM %s%s GROUP BY %s ORDER BY %s LIMIT %d",
+		strings.Join(selectParts, ", "),
+		b.fromClause(), where,
+		strings.Join(groupByParts, ", "),
+		orderBy, limit,
 	)
 	rows, err := e.pool.Query(ctx, q, b.params...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+
 	out := make([]map[string]interface{}, 0)
 	for rows.Next() {
-		var label, value interface{}
-		if err := rows.Scan(&label, &value); err != nil {
-			return nil, err
+		if hasSeries {
+			var label, series, value interface{}
+			if err := rows.Scan(&label, &series, &value); err != nil {
+				return nil, err
+			}
+			out = append(out, map[string]interface{}{
+				"label":  normalize(label),
+				"series": normalize(series),
+				"value":  normalize(value),
+			})
+		} else {
+			var label, value interface{}
+			if err := rows.Scan(&label, &value); err != nil {
+				return nil, err
+			}
+			out = append(out, map[string]interface{}{
+				"label": normalize(label),
+				"value": normalize(value),
+			})
 		}
-		out = append(out, map[string]interface{}{
-			"label": normalize(label),
-			"value": normalize(value),
-		})
 	}
-	return &Result{Shape: "series", Columns: []string{"label", "value"}, Rows: out}, rows.Err()
+
+	cols := []string{"label", "value"}
+	if hasSeries {
+		cols = []string{"label", "series", "value"}
+	}
+	return &Result{Shape: "series", Columns: cols, Rows: out}, rows.Err()
 }
 
 func (e *Executor) runTable(ctx context.Context, b *builder, spec *QuerySpec, where string) (*Result, error) {
