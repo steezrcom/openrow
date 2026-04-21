@@ -7,15 +7,17 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/steezrcom/steezr-erp/internal/ai"
+	"github.com/steezrcom/steezr-erp/internal/auth"
 	"github.com/steezrcom/steezr-erp/internal/config"
 	"github.com/steezrcom/steezr-erp/internal/entities"
+	"github.com/steezrcom/steezr-erp/internal/httpapi"
 	"github.com/steezrcom/steezr-erp/internal/store"
 	"github.com/steezrcom/steezr-erp/internal/tenant"
-	"github.com/steezrcom/steezr-erp/internal/web"
 )
 
 func main() {
@@ -48,18 +50,20 @@ func run(log *slog.Logger) error {
 	}
 	log.Info("migrations applied")
 
-	tenantSvc := tenant.NewService(pool)
-	entitySvc := entities.NewService(pool)
-	proposer := ai.NewProposer(cfg.AnthropicAPIKey)
-
-	handler, err := web.NewHandler(tenantSvc, entitySvc, proposer, log)
-	if err != nil {
-		return err
-	}
+	api := httpapi.New(httpapi.Deps{
+		Log:           log,
+		Users:         auth.NewUserService(pool),
+		Sessions:      auth.NewSessionService(pool),
+		Memberships:   auth.NewMembershipService(pool),
+		Tenants:       tenant.NewService(pool),
+		Entities:      entities.NewService(pool),
+		Proposer:      ai.NewProposer(cfg.AnthropicAPIKey),
+		SecureCookies: strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true"),
+	})
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           handler.Routes(),
+		Handler:           api.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      120 * time.Second,

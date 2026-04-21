@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -47,7 +48,7 @@ func (s *Service) ListRows(ctx context.Context, schema string, ent *Entity, limi
 		}
 		row := make(Row, len(cols))
 		for i, c := range cols {
-			row[c] = vals[i]
+			row[c] = normalizeValue(vals[i])
 		}
 		out = append(out, row)
 	}
@@ -192,6 +193,16 @@ func rowColumns(ent *Entity) []string {
 	}
 	cols = append(cols, "created_at", "updated_at")
 	return cols
+}
+
+// normalizeValue converts pgx's raw scan values into JSON-friendly shapes.
+// Most notably UUIDs arrive as [16]byte and would serialize as a number array.
+func normalizeValue(v any) any {
+	switch x := v.(type) {
+	case [16]byte:
+		return uuid.UUID(x).String()
+	}
+	return v
 }
 
 func coerceValue(t DataType, raw string) (any, error) {

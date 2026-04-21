@@ -3,7 +3,9 @@ module github.com/steezrcom/steezr-erp
 go 1.25.6
 
 require (
+	github.com/alexedwards/argon2id v1.0.0 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.37.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.9.2 // indirect
@@ -12,6 +14,8 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
 )
