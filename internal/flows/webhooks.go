@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 )
 
 // NewWebhookToken generates a 32-byte random token plus its SHA-256 hash.
@@ -53,31 +55,64 @@ func (s *Service) RotateWebhookToken(ctx context.Context, tenantID, flowID strin
 	return plaintext, nil
 }
 
+// WebhookTarget bundles everything the public webhook endpoint needs to
+// authenticate + dispatch a request: the flow, and an optional signing
+// secret (plaintext) that the connector's VerifyWebhook will check
+// against the request's signature header.
+type WebhookTarget struct {
+	Flow                 *Flow
+	WebhookConnectorID   string // from trigger_config; empty if no signature verification
+	WebhookSigningSecret string // decrypted plaintext; empty if not configured
+}
+
 // ResolveWebhookTarget validates the (tenant_slug, flow_id, presented_token)
-// triple and returns the flow. Public endpoint callers hit this before
-// dispatching — it's the security boundary.
-func (s *Service) ResolveWebhookTarget(ctx context.Context, tenantSlug, flowID, presentedToken string) (*Flow, error) {
+// triple and returns the target. Public endpoint callers hit this before
+// dispatching — it's the security boundary for token auth. Signature
+// verification happens in the HTTP layer using the returned secret.
+func (s *Service) ResolveWebhookTarget(ctx context.Context, tenantSlug, flowID, presentedToken string) (*WebhookTarget, error) {
 	if presentedToken == "" {
 		return nil, errors.New("missing token")
 	}
 	var (
-		tenantID string
-		hash     []byte
+		tenantID      string
+		hash          []byte
+		signingSecret []byte
 	)
 	err := s.pool.QueryRow(ctx, `
-		SELECT t.id, f.webhook_token_hash
+		SELECT t.id, f.webhook_token_hash, COALESCE(f.webhook_secret, ''::bytea)
 		FROM openrow.flows f
 		JOIN openrow.tenants t ON t.id = f.tenant_id
 		WHERE t.slug = $1 AND f.id = $2
 		  AND f.trigger_kind = 'webhook'
 		  AND f.enabled = true`,
 		tenantSlug, flowID,
-	).Scan(&tenantID, &hash)
+	).Scan(&tenantID, &hash, &signingSecret)
 	if err != nil {
 		return nil, errors.New("no such webhook flow")
 	}
 	if !VerifyWebhookToken(presentedToken, hash) {
 		return nil, errors.New("invalid token")
 	}
-	return s.Get(ctx, tenantID, flowID)
+	flow, err := s.Get(ctx, tenantID, flowID)
+	if err != nil {
+		return nil, err
+	}
+	target := &WebhookTarget{Flow: flow}
+	// Connector binding lives in trigger_config.webhook_connector_id.
+	var cfg struct {
+		ConnectorID string `json:"webhook_connector_id"`
+	}
+	_ = json.Unmarshal(flow.TriggerConfig, &cfg)
+	target.WebhookConnectorID = cfg.ConnectorID
+	if target.WebhookConnectorID != "" && len(signingSecret) > 0 {
+		if s.enc == nil {
+			return nil, errors.New("flows service missing encrypter; cannot decrypt signing secret")
+		}
+		plaintext, decErr := s.enc.Decrypt(signingSecret)
+		if decErr != nil {
+			return nil, fmt.Errorf("decrypt signing secret: %w", decErr)
+		}
+		target.WebhookSigningSecret = string(plaintext)
+	}
+	return target, nil
 }

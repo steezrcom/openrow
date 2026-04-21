@@ -9,8 +9,21 @@ import (
 	"github.com/openrow/openrow/internal/connectors"
 )
 
+// connectorDTO is the wire shape for the catalog — enriches the
+// descriptor with capability flags that aren't otherwise introspectable
+// from JSON (verifier, actions are func-valued).
+type connectorDTO struct {
+	*connectors.Connector
+	HasVerifyWebhook bool `json:"has_verify_webhook"`
+}
+
 func (s *Server) listConnectors(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"connectors": connectors.All()})
+	all := connectors.All()
+	out := make([]connectorDTO, 0, len(all))
+	for _, c := range all {
+		out = append(out, connectorDTO{Connector: c, HasVerifyWebhook: c.VerifyWebhook != nil})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"connectors": out})
 }
 
 func (s *Server) listConnectorConfigs(w http.ResponseWriter, r *http.Request) {
