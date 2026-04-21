@@ -265,6 +265,30 @@ export const api = {
   deleteDashboard: (slug: string) =>
     request<void>(`/api/v1/dashboards/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
 
+  createDashboard: (body: { name: string; slug?: string; description?: string }) =>
+    request<{ dashboard: Dashboard }>('/api/v1/dashboards', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then((r) => r.dashboard),
+
+  updateDashboard: (slug: string, body: { name?: string; description?: string }) =>
+    request<{ dashboard: Dashboard }>(`/api/v1/dashboards/${encodeURIComponent(slug)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }).then((r) => r.dashboard),
+
+  updateReport: (id: string, body: {
+    title?: string
+    subtitle?: string
+    widget_type?: WidgetType
+    width?: number
+    query_spec?: QuerySpec
+  }) =>
+    request<void>(`/api/v1/reports/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
   executeReport: (id: string, range?: { from?: string; to?: string }) => {
     const qs = new URLSearchParams()
     if (range?.from) qs.set('from', range.from)

@@ -49,6 +49,31 @@ func (s *Server) getDashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"dashboard": d})
 }
 
+type patchDashboardReq struct {
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+func (s *Server) patchDashboard(w http.ResponseWriter, r *http.Request) {
+	m, _ := auth.MembershipFromContext(r.Context())
+	var in patchDashboardReq
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	d, err := s.dashboards.UpdateDashboard(r.Context(), m.TenantID, r.PathValue("slug"),
+		reports.UpdateDashboardInput{Name: in.Name, Description: in.Description})
+	if err != nil {
+		if errors.Is(err, reports.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "dashboard not found")
+			return
+		}
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"dashboard": d})
+}
+
 func (s *Server) deleteDashboard(w http.ResponseWriter, r *http.Request) {
 	m, _ := auth.MembershipFromContext(r.Context())
 	if err := s.dashboards.Delete(r.Context(), m.TenantID, r.PathValue("slug")); err != nil {

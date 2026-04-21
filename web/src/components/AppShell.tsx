@@ -18,6 +18,7 @@ import { useEntities } from '@/hooks/useEntities'
 import { useDashboards } from '@/hooks/useDashboards'
 import { cn } from '@/lib/utils'
 import { ChatPanel } from '@/components/ChatPanel'
+import { CreateDashboardModal } from '@/components/CreateDashboardModal'
 
 export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe()
@@ -62,6 +63,7 @@ function Sidebar({
   const match = useMatchRoute()
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const [newDashboardOpen, setNewDashboardOpen] = useState(false)
 
   const logout = useMutation({
     mutationFn: api.logout,
@@ -93,7 +95,18 @@ function Sidebar({
           Home
         </NavItem>
 
-        <SectionLabel>Dashboards</SectionLabel>
+        <div className="mt-5 flex items-center justify-between px-3 pb-1">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+            Dashboards
+          </span>
+          <button
+            onClick={() => setNewDashboardOpen(true)}
+            className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            title="New dashboard"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
         {loadingDashboards && (
           <div className="space-y-1 px-2 py-1">
             <div className="h-7 animate-pulse rounded-md bg-muted/40" />
@@ -101,7 +114,7 @@ function Sidebar({
         )}
         {!loadingDashboards && dashboards.length === 0 && (
           <p className="px-3 py-2 text-xs text-muted-foreground">
-            Ask Claude to create your first dashboard.
+            Create one, or ask Claude to.
           </p>
         )}
         {dashboards.map((d) => {
@@ -168,6 +181,7 @@ function Sidebar({
         </Link>
       </nav>
 
+      <CreateDashboardModal open={newDashboardOpen} onClose={() => setNewDashboardOpen(false)} />
       <div className="border-t border-border p-3">
         <div className="flex items-center gap-2 px-2 py-1.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-primary">

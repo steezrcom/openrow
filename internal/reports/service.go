@@ -235,6 +235,47 @@ func (s *Service) Get(ctx context.Context, tenantID, slug string) (*Dashboard, e
 	return &d, rep.Err()
 }
 
+// UpdateDashboardInput is the patchable subset of a dashboard.
+type UpdateDashboardInput struct {
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+func (s *Service) UpdateDashboard(ctx context.Context, tenantID, slug string, in UpdateDashboardInput) (*Dashboard, error) {
+	sets := []string{}
+	params := []interface{}{}
+	idx := 1
+	if in.Name != nil {
+		n := strings.TrimSpace(*in.Name)
+		if n == "" {
+			return nil, errors.New("name cannot be empty")
+		}
+		sets = append(sets, fmt.Sprintf("name = $%d", idx))
+		params = append(params, n)
+		idx++
+	}
+	if in.Description != nil {
+		sets = append(sets, fmt.Sprintf("description = $%d", idx))
+		params = append(params, nullIfEmpty(*in.Description))
+		idx++
+	}
+	if len(sets) == 0 {
+		return s.Get(ctx, tenantID, slug)
+	}
+	sets = append(sets, "updated_at = now()")
+	params = append(params, tenantID, slug)
+	q := fmt.Sprintf("UPDATE steezr.dashboards SET %s WHERE tenant_id = $%d AND slug = $%d",
+		strings.Join(sets, ", "), idx, idx+1)
+	tag, err := s.pool.Exec(ctx, q, params...)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, ErrNotFound
+	}
+	return s.Get(ctx, tenantID, slug)
+}
+
 func (s *Service) Delete(ctx context.Context, tenantID, slug string) error {
 	tag, err := s.pool.Exec(ctx, `
 		DELETE FROM steezr.dashboards

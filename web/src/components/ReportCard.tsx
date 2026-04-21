@@ -14,7 +14,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { AlertTriangle, Loader2, Trash2 } from 'lucide-react'
+import { AlertTriangle, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { api, type Report } from '@/lib/api'
 import { Card } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -33,9 +33,11 @@ const CHART_COLORS = [
 export function ReportCard({
   report,
   range,
+  onEdit,
 }: {
   report: Report
   range?: { from?: string; to?: string }
+  onEdit?: () => void
 }) {
   const qc = useQueryClient()
   const exec = useQuery({
@@ -58,15 +60,26 @@ export function ReportCard({
             <p className="truncate text-xs text-muted-foreground">{report.subtitle}</p>
           )}
         </div>
-        <button
-          onClick={() => {
-            if (confirm(`Delete report "${report.title}"?`)) del.mutate()
-          }}
-          className="invisible rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:visible"
-          title="Delete report"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        <div className="flex items-center gap-0.5">
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              className="invisible rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground group-hover:visible"
+              title="Edit report"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (confirm(`Delete report "${report.title}"?`)) del.mutate()
+            }}
+            className="invisible rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:visible"
+            title="Delete report"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </header>
       <div className="flex-1 p-4 min-h-[160px]">
         {exec.isLoading && (
