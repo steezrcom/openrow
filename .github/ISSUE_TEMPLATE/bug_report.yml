@@ -1,0 +1,57 @@
+name: Bug report
+description: Something's broken in OpenRow
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please **do not** use this form for security issues; see [SECURITY.md](../../SECURITY.md).
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing what went wrong.
+      placeholder: "Creating an entity with a reserved keyword as a field name crashes the server with..."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps so someone else can see it too.
+      placeholder: |
+        1. Sign up, create a workspace
+        2. Open chat, send "create a table called customers with a 'user' field"
+        3. Observe 500 in network tab
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include stack traces, error messages, or logs if you have them.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: OpenRow version / commit
+      placeholder: "main @ abc123 or v0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "macOS 15, Postgres 16, Go 1.25, docker compose 2.33"
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Anything unusual about your setup, partial workarounds, hypotheses.
