@@ -1,0 +1,22 @@
+# Build output
+bin/
+web/dist/
+web/node_modules/
+
+# Local secrets + throwaway dev files
+.env
+.env.local
+cookies.txt
+/scripts/
+
+# VCS and IDE noise
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+
+# Tooling caches
+*.test
+*.out
+web/*.tsbuildinfo
