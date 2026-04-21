@@ -1,0 +1,32 @@
+{{define "content"}}
+<h1>{{.Entity.DisplayName}} <span class="pill">{{.Entity.Name}}</span></h1>
+{{if .Entity.Description}}<p class="hint">{{.Entity.Description}}</p>{{end}}
+
+<h2>Fields</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Label</th>
+            <th>Type</th>
+            <th>Required</th>
+            <th>Unique</th>
+            <th>References</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Entity.Fields}}
+            <tr>
+                <td>{{.Name}}</td>
+                <td>{{.DisplayName}}</td>
+                <td><span class="pill">{{.DataType}}</span></td>
+                <td>{{if .IsRequired}}yes{{end}}</td>
+                <td>{{if .IsUnique}}yes{{end}}</td>
+                <td>{{.ReferenceEntity}}</td>
+            </tr>
+        {{end}}
+    </tbody>
+</table>
+
+<p class="hint" style="margin-top:24px"><a href="/t/{{.Tenant.Slug}}">Back to {{.Tenant.Name}}</a></p>
+{{end}}

@@ -1,0 +1,29 @@
+{{define "content"}}
+<h1>{{.Tenant.Name}}</h1>
+
+<h2>Describe an entity</h2>
+<form hx-post="/t/{{.Tenant.Slug}}/entities" hx-target="#entities" hx-swap="outerHTML" hx-disabled-elt="find button" hx-on::after-request="if(event.detail.successful) this.reset()">
+    <textarea name="description" rows="3" required placeholder="A customer with a name, email, and optional phone. Emails should be unique."></textarea>
+    <button type="submit">Propose entity</button>
+    <span class="htmx-indicator">Asking Claude.</span>
+</form>
+
+<h2>Entities</h2>
+{{template "entities" .}}
+{{end}}
+
+{{define "entities"}}
+<div id="entities">
+    {{if .Entities}}
+        {{range .Entities}}
+            <div class="card">
+                <h3><a href="/t/{{$.Tenant.Slug}}/entities/{{.Name}}">{{.DisplayName}}</a></h3>
+                <p>{{if .Description}}{{.Description}}{{else}}<span class="hint">No description.</span>{{end}}</p>
+                <div class="meta"><span class="pill">{{.Name}}</span></div>
+            </div>
+        {{end}}
+    {{else}}
+        <p class="hint">No entities yet. Describe one above to create the first table.</p>
+    {{end}}
+</div>
+{{end}}

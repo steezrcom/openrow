@@ -1,0 +1,21 @@
+{{define "content"}}
+<h1>Tenants</h1>
+{{if .Tenants}}
+    {{range .Tenants}}
+        <div class="card">
+            <h3><a href="/t/{{.Slug}}">{{.Name}}</a></h3>
+            <p class="hint">{{.Slug}}</p>
+        </div>
+    {{end}}
+{{else}}
+    <p class="hint">No tenants yet. Create one to start.</p>
+{{end}}
+
+<h2>Create tenant</h2>
+<form method="post" action="/tenants">
+    <input type="text" name="name" placeholder="Acme Inc." required>
+    <input type="text" name="slug" placeholder="acme" pattern="[a-z][a-z0-9_]*" required style="margin-top:8px">
+    <button type="submit">Create tenant</button>
+    <p class="hint">Slug is lowercase letters, digits, and underscores. Becomes the Postgres schema.</p>
+</form>
+{{end}}
