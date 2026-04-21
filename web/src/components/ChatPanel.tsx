@@ -76,9 +76,12 @@ function ChatOpen({ onClose }: { onClose: () => void }) {
     onMutate: (message) => pushUser(message),
     onSuccess: async (res) => {
       pushAssistant(res.assistant)
-      if (res.assistant.actions?.some(mutatesEntities)) {
+      if (res.assistant.actions?.some(mutates)) {
         await qc.invalidateQueries({ queryKey: ['entities'] })
         await qc.invalidateQueries({ queryKey: ['rows'] })
+        await qc.invalidateQueries({ queryKey: ['dashboards'] })
+        await qc.invalidateQueries({ queryKey: ['dashboard'] })
+        await qc.invalidateQueries({ queryKey: ['report-exec'] })
       }
     },
     onError: (err) => {
@@ -248,11 +251,20 @@ function ActionPill({ action }: { action: ChatAction }) {
   )
 }
 
-function mutatesEntities(a: ChatAction): boolean {
-  return (
-    a.tool === 'create_entity' ||
-    a.tool === 'add_row' ||
-    a.tool === 'update_row' ||
-    a.tool === 'delete_row'
-  )
+function mutates(a: ChatAction): boolean {
+  switch (a.tool) {
+    case 'create_entity':
+    case 'add_row':
+    case 'update_row':
+    case 'delete_row':
+    case 'add_field':
+    case 'drop_field':
+    case 'create_dashboard':
+    case 'add_report':
+    case 'update_report':
+    case 'delete_report':
+    case 'delete_dashboard':
+      return true
+  }
+  return false
 }

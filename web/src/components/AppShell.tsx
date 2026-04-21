@@ -5,21 +5,24 @@ import {
   Building2,
   ChevronsUpDown,
   Database,
+  LayoutDashboard,
   LogOut,
   Plus,
   Search,
   Settings,
   Sparkles,
 } from 'lucide-react'
-import { api, type Entity, type Membership } from '@/lib/api'
+import { api, type Dashboard, type Entity, type Membership } from '@/lib/api'
 import { useMe } from '@/hooks/useMe'
 import { useEntities } from '@/hooks/useEntities'
+import { useDashboards } from '@/hooks/useDashboards'
 import { cn } from '@/lib/utils'
 import { ChatPanel } from '@/components/ChatPanel'
 
 export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe()
   const entities = useEntities()
+  const dashboards = useDashboards()
   if (!me.data) return null
 
   return (
@@ -30,6 +33,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         email={me.data.user.email}
         entities={entities.data ?? []}
         loadingEntities={entities.isLoading}
+        dashboards={dashboards.data ?? []}
+        loadingDashboards={dashboards.isLoading}
       />
       <main className="flex-1 overflow-x-hidden">{children}</main>
       <ChatPanel />
@@ -43,12 +48,16 @@ function Sidebar({
   email,
   entities,
   loadingEntities,
+  dashboards,
+  loadingDashboards,
 }: {
   active: Membership | null
   memberships: Membership[]
   email: string
   entities: Entity[]
   loadingEntities: boolean
+  dashboards: Dashboard[]
+  loadingDashboards: boolean
 }) {
   const match = useMatchRoute()
   const qc = useQueryClient()
@@ -83,6 +92,37 @@ function Sidebar({
         <NavItem to="/app" icon={<Database className="h-4 w-4" />} active={isDashboardActive}>
           Home
         </NavItem>
+
+        <SectionLabel>Dashboards</SectionLabel>
+        {loadingDashboards && (
+          <div className="space-y-1 px-2 py-1">
+            <div className="h-7 animate-pulse rounded-md bg-muted/40" />
+          </div>
+        )}
+        {!loadingDashboards && dashboards.length === 0 && (
+          <p className="px-3 py-2 text-xs text-muted-foreground">
+            Ask Claude to create your first dashboard.
+          </p>
+        )}
+        {dashboards.map((d) => {
+          const isActive = Boolean(
+            match({ to: '/app/dashboards/$slug', params: { slug: d.slug } })
+          )
+          return (
+            <Link
+              key={d.id}
+              to="/app/dashboards/$slug"
+              params={{ slug: d.slug }}
+              className={cn(
+                'flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors hover:bg-accent',
+                isActive ? 'bg-accent text-foreground' : 'text-muted-foreground'
+              )}
+            >
+              <LayoutDashboard className="h-3.5 w-3.5" />
+              <span className="truncate">{d.name}</span>
+            </Link>
+          )
+        })}
 
         <SectionLabel>Entities</SectionLabel>
 

@@ -56,6 +56,52 @@ export interface RefOption {
   Label: string
 }
 
+export type WidgetType = 'kpi' | 'bar' | 'line' | 'pie' | 'table'
+
+export interface QuerySpec {
+  entity: string
+  filters?: {
+    field: string
+    op: string
+    value?: unknown
+  }[]
+  group_by?: { field: string; bucket?: '' | 'day' | 'week' | 'month' | 'quarter' | 'year' }
+  aggregate?: { fn: 'count' | 'sum' | 'avg' | 'min' | 'max'; field?: string }
+  sort?: { field: string; dir: 'asc' | 'desc' }
+  limit?: number
+}
+
+export interface Report {
+  id: string
+  dashboard_id: string
+  title: string
+  subtitle?: string
+  widget_type: WidgetType
+  query_spec: QuerySpec
+  width: number
+  position: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Dashboard {
+  id: string
+  tenant_id: string
+  name: string
+  slug: string
+  description?: string
+  position: number
+  reports?: Report[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ReportResult {
+  shape: 'kpi' | 'series' | 'table'
+  columns?: string[]
+  rows: Record<string, unknown>[]
+}
+
 export interface RowsResponse {
   entity: Entity
   rows: Record<string, unknown>[]
@@ -207,6 +253,26 @@ export const api = {
       `/api/v1/entities/${encodeURIComponent(name)}/fields/${encodeURIComponent(field)}`,
       { method: 'DELETE' }
     ),
+
+  listDashboards: () =>
+    request<{ dashboards: Dashboard[] }>('/api/v1/dashboards').then((r) => r.dashboards),
+
+  getDashboard: (slug: string) =>
+    request<{ dashboard: Dashboard }>(`/api/v1/dashboards/${encodeURIComponent(slug)}`).then(
+      (r) => r.dashboard
+    ),
+
+  deleteDashboard: (slug: string) =>
+    request<void>(`/api/v1/dashboards/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
+
+  executeReport: (id: string) =>
+    request<{ result: ReportResult }>(
+      `/api/v1/reports/${encodeURIComponent(id)}/execute`,
+      { method: 'POST' }
+    ).then((r) => r.result),
+
+  deleteReport: (id: string) =>
+    request<void>(`/api/v1/reports/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   chat: (body: { history: { role: string; text: string }[]; message: string }) =>
     request<{

@@ -18,6 +18,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppEntitiesNameRouteImport } from './routes/app.entities.$name'
+import { Route as AppDashboardsSlugRouteImport } from './routes/app.dashboards.$slug'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -64,6 +65,11 @@ const AppEntitiesNameRoute = AppEntitiesNameRouteImport.update({
   path: '/entities/$name',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDashboardsSlugRoute = AppDashboardsSlugRouteImport.update({
+  id: '/dashboards/$slug',
+  path: '/dashboards/$slug',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/reset': typeof ResetRoute
   '/signup': typeof SignupRoute
   '/app/': typeof AppIndexRoute
+  '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
 }
 export interface FileRoutesByTo {
@@ -84,6 +91,7 @@ export interface FileRoutesByTo {
   '/reset': typeof ResetRoute
   '/signup': typeof SignupRoute
   '/app': typeof AppIndexRoute
+  '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
 }
 export interface FileRoutesById {
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   '/reset': typeof ResetRoute
   '/signup': typeof SignupRoute
   '/app/': typeof AppIndexRoute
+  '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
 }
 export interface FileRouteTypes {
@@ -109,6 +118,7 @@ export interface FileRouteTypes {
     | '/reset'
     | '/signup'
     | '/app/'
+    | '/app/dashboards/$slug'
     | '/app/entities/$name'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/reset'
     | '/signup'
     | '/app'
+    | '/app/dashboards/$slug'
     | '/app/entities/$name'
   id:
     | '__root__'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/reset'
     | '/signup'
     | '/app/'
+    | '/app/dashboards/$slug'
     | '/app/entities/$name'
   fileRoutesById: FileRoutesById
 }
@@ -208,16 +220,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppEntitiesNameRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/dashboards/$slug': {
+      id: '/app/dashboards/$slug'
+      path: '/dashboards/$slug'
+      fullPath: '/app/dashboards/$slug'
+      preLoaderRoute: typeof AppDashboardsSlugRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
+  AppDashboardsSlugRoute: typeof AppDashboardsSlugRoute
   AppEntitiesNameRoute: typeof AppEntitiesNameRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
+  AppDashboardsSlugRoute: AppDashboardsSlugRoute,
   AppEntitiesNameRoute: AppEntitiesNameRoute,
 }
 
