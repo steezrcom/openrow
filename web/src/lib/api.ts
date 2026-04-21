@@ -417,4 +417,179 @@ export const api = {
 
   deleteReport: (id: string) =>
     request<void>(`/api/v1/reports/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  listConnectors: () =>
+    request<{ connectors: Connector[] }>('/api/v1/connectors').then((r) => r.connectors),
+
+  listConnectorConfigs: () =>
+    request<{ configs: ConnectorConfigSafe[] }>('/api/v1/connectors/configs').then((r) => r.configs),
+
+  putConnectorConfig: (id: string, body: { fields: Record<string, string | null>; enabled?: boolean }) =>
+    request<{ config: ConnectorConfigSafe }>(
+      `/api/v1/connectors/configs/${encodeURIComponent(id)}`,
+      { method: 'PUT', body: JSON.stringify(body) }
+    ).then((r) => r.config),
+
+  deleteConnectorConfig: (id: string) =>
+    request<void>(`/api/v1/connectors/configs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  testConnectorConfig: (id: string) =>
+    request<{ ok: boolean; message?: string }>(
+      `/api/v1/connectors/configs/${encodeURIComponent(id)}/test`,
+      { method: 'POST' }
+    ),
+
+  listFlows: () =>
+    request<{ flows: Flow[] }>('/api/v1/flows').then((r) => r.flows),
+
+  listFlowTools: () =>
+    request<{ tools: FlowToolInfo[] }>('/api/v1/flows/tools').then((r) => r.tools),
+
+  getFlow: (id: string) =>
+    request<{ flow: Flow }>(`/api/v1/flows/${encodeURIComponent(id)}`).then((r) => r.flow),
+
+  createFlow: (body: {
+    name: string
+    description?: string
+    goal: string
+    trigger_kind: FlowTriggerKind
+    trigger_config?: Record<string, unknown>
+    tool_allowlist: string[]
+    mode: FlowMode
+  }) =>
+    request<{ flow: Flow }>('/api/v1/flows', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then((r) => r.flow),
+
+  patchFlow: (id: string, body: Partial<{
+    name: string
+    description: string
+    goal: string
+    trigger_kind: FlowTriggerKind
+    trigger_config: Record<string, unknown>
+    tool_allowlist: string[]
+    mode: FlowMode
+    enabled: boolean
+  }>) =>
+    request<{ flow: Flow }>(`/api/v1/flows/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }).then((r) => r.flow),
+
+  deleteFlow: (id: string) =>
+    request<void>(`/api/v1/flows/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  triggerFlow: (id: string) =>
+    request<{ run: FlowRun; error?: string }>(
+      `/api/v1/flows/${encodeURIComponent(id)}/trigger`,
+      { method: 'POST' }
+    ),
+
+  listFlowRuns: (id: string) =>
+    request<{ runs: FlowRun[] }>(`/api/v1/flows/${encodeURIComponent(id)}/runs`).then((r) => r.runs),
+
+  getFlowRun: (runID: string) =>
+    request<{ run: FlowRun; steps: FlowRunStep[] }>(
+      `/api/v1/flow_runs/${encodeURIComponent(runID)}`
+    ),
+
+  listFlowApprovals: () =>
+    request<{ approvals: FlowApproval[] }>('/api/v1/flow_approvals').then((r) => r.approvals),
+
+  resolveFlowApproval: (id: string, body: { approve: boolean; rejection_reason?: string }) =>
+    request<{ approval: FlowApproval; run: FlowRun; error?: string }>(
+      `/api/v1/flow_approvals/${encodeURIComponent(id)}/resolve`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
+}
+
+export type ConnectorStatus = 'coming_soon' | 'available'
+export type CredentialFieldKind = 'text' | 'secret' | 'url'
+
+export interface CredentialField {
+  name: string
+  label: string
+  kind: CredentialFieldKind
+  required: boolean
+  placeholder?: string
+  help?: string
+}
+
+export interface Connector {
+  id: string
+  name: string
+  description: string
+  category: string
+  homepage?: string
+  status: ConnectorStatus
+  credentials: CredentialField[]
+}
+
+export interface ConnectorConfigSafe {
+  id: string
+  connector_id: string
+  enabled: boolean
+  fields: Record<string, unknown>
+  fields_present: Record<string, boolean>
+  created_at: string
+  updated_at: string
+}
+
+export type FlowMode = 'dry_run' | 'approve' | 'auto'
+export type FlowTriggerKind = 'manual' | 'entity_event' | 'webhook' | 'cron'
+export type FlowRunStatus = 'queued' | 'running' | 'awaiting_approval' | 'succeeded' | 'failed'
+export type FlowApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired'
+
+export interface Flow {
+  id: string
+  tenant_id: string
+  name: string
+  description?: string
+  goal: string
+  trigger_kind: FlowTriggerKind
+  trigger_config: Record<string, unknown>
+  tool_allowlist: string[]
+  mode: FlowMode
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface FlowToolInfo {
+  name: string
+  description: string
+  mutates: boolean
+}
+
+export interface FlowRun {
+  id: string
+  flow_id: string
+  tenant_id: string
+  trigger_payload: Record<string, unknown>
+  status: FlowRunStatus
+  mode: FlowMode
+  error?: string
+  started_at: string
+  finished_at?: string | null
+}
+
+export interface FlowRunStep {
+  id: string
+  flow_run_id: string
+  position: number
+  kind: 'agent_message' | 'tool_call' | 'tool_result' | 'mutation_blocked' | 'approval_requested'
+  content: Record<string, unknown>
+  created_at: string
+}
+
+export interface FlowApproval {
+  id: string
+  flow_run_id: string
+  tool_call_id: string
+  tool_name: string
+  tool_input: Record<string, unknown>
+  status: FlowApprovalStatus
+  rejection_reason?: string
+  requested_at: string
 }

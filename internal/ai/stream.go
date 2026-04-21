@@ -49,7 +49,7 @@ func (a *Agent) RunStream(
 	if err != nil {
 		return fmt.Errorf("list entities: %w", err)
 	}
-	tools := a.buildTools(ctx, tenantID, pgSchema)
+	tools := a.BuildToolset(ctx, tenantID, pgSchema)
 	msgs := buildMessageHistory(history, userMessage, existing)
 
 	var actions []Action
@@ -66,7 +66,7 @@ func (a *Agent) RunStream(
 		stream, err := client.CreateChatCompletionStream(ctx, openai.ChatCompletionRequest{
 			Model:      cfg.Model,
 			Messages:   msgs,
-			Tools:      tools.toolParams(),
+			Tools:      tools.ToolParams(),
 			ToolChoice: "auto",
 			MaxTokens:  2048,
 			Stream:     true,
@@ -162,7 +162,7 @@ func (a *Agent) RunStream(
 				Tool: &Action{Tool: tc.Function.Name, Input: input},
 			})
 
-			exec := tools.run(ctx, tc.Function.Name, input)
+			exec := tools.Invoke(ctx, tc.Function.Name, input)
 			act := Action{
 				Tool:       tc.Function.Name,
 				Input:      input,

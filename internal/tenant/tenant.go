@@ -61,6 +61,22 @@ func (s *Service) Create(ctx context.Context, slug, name string) (*Tenant, error
 	return &Tenant{ID: id, Slug: slug, Name: name, PGSchema: pgSchema}, nil
 }
 
+func (s *Service) ByID(ctx context.Context, id string) (*Tenant, error) {
+	var t Tenant
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, slug, name, pg_schema
+		FROM openrow.tenants
+		WHERE id = $1`, id,
+	).Scan(&t.ID, &t.Slug, &t.Name, &t.PGSchema)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 func (s *Service) BySlug(ctx context.Context, slug string) (*Tenant, error) {
 	var t Tenant
 	err := s.pool.QueryRow(ctx, `

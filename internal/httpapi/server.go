@@ -6,7 +6,9 @@ import (
 
 	"github.com/openrow/openrow/internal/ai"
 	"github.com/openrow/openrow/internal/auth"
+	"github.com/openrow/openrow/internal/connectors"
 	"github.com/openrow/openrow/internal/entities"
+	"github.com/openrow/openrow/internal/flows"
 	"github.com/openrow/openrow/internal/llm"
 	"github.com/openrow/openrow/internal/mailer"
 	"github.com/openrow/openrow/internal/ratelimit"
@@ -28,6 +30,9 @@ type Server struct {
 	proposer       *ai.Proposer
 	agent          *ai.Agent
 	llm            *llm.Service
+	connectors     *connectors.Service
+	flows          *flows.Service
+	flowRunner     *flows.Runner
 	chatLimiter    *ratelimit.Keyed
 	mail           mailer.Mailer
 	appURL         string
@@ -48,6 +53,9 @@ type Deps struct {
 	Proposer       *ai.Proposer
 	Agent          *ai.Agent
 	LLM            *llm.Service
+	Connectors     *connectors.Service
+	Flows          *flows.Service
+	FlowRunner     *flows.Runner
 	Mailer         mailer.Mailer
 	// AppURL is the public URL users should be directed to (used in email links).
 	AppURL string
@@ -79,6 +87,9 @@ func New(d Deps) *Server {
 		proposer:       d.Proposer,
 		agent:          d.Agent,
 		llm:            d.LLM,
+		connectors:     d.Connectors,
+		flows:          d.Flows,
+		flowRunner:     d.FlowRunner,
 		chatLimiter:    chatLim,
 		mail:           d.Mailer,
 		appURL:         appURL,
@@ -130,6 +141,24 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("POST /api/v1/llm/models/list", auth.RequireAuth(http.HandlerFunc(s.listLLMModels)))
 	authed.Handle("POST /api/v1/llm/test", auth.RequireAuth(http.HandlerFunc(s.testLLM)))
 	authed.Handle("POST /api/v1/llm/self-test", auth.RequireMembership(http.HandlerFunc(s.selfTestLLM)))
+
+	authed.Handle("GET /api/v1/flows", auth.RequireMembership(http.HandlerFunc(s.listFlows)))
+	authed.Handle("POST /api/v1/flows", auth.RequireMembership(http.HandlerFunc(s.createFlow)))
+	authed.Handle("GET /api/v1/flows/tools", auth.RequireMembership(http.HandlerFunc(s.listFlowTools)))
+	authed.Handle("GET /api/v1/flows/{id}", auth.RequireMembership(http.HandlerFunc(s.getFlow)))
+	authed.Handle("PATCH /api/v1/flows/{id}", auth.RequireMembership(http.HandlerFunc(s.patchFlow)))
+	authed.Handle("DELETE /api/v1/flows/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteFlow)))
+	authed.Handle("POST /api/v1/flows/{id}/trigger", auth.RequireMembership(http.HandlerFunc(s.triggerFlow)))
+	authed.Handle("GET /api/v1/flows/{id}/runs", auth.RequireMembership(http.HandlerFunc(s.listFlowRuns)))
+	authed.Handle("GET /api/v1/flow_runs/{run_id}", auth.RequireMembership(http.HandlerFunc(s.getFlowRun)))
+	authed.Handle("GET /api/v1/flow_approvals", auth.RequireMembership(http.HandlerFunc(s.listFlowApprovals)))
+	authed.Handle("POST /api/v1/flow_approvals/{id}/resolve", auth.RequireMembership(http.HandlerFunc(s.resolveFlowApproval)))
+
+	authed.Handle("GET /api/v1/connectors", auth.RequireAuth(http.HandlerFunc(s.listConnectors)))
+	authed.Handle("GET /api/v1/connectors/configs", auth.RequireMembership(http.HandlerFunc(s.listConnectorConfigs)))
+	authed.Handle("PUT /api/v1/connectors/configs/{id}", auth.RequireMembership(http.HandlerFunc(s.putConnectorConfig)))
+	authed.Handle("POST /api/v1/connectors/configs/{id}/test", auth.RequireMembership(http.HandlerFunc(s.testConnectorConfig)))
+	authed.Handle("DELETE /api/v1/connectors/configs/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteConnectorConfig)))
 
 	authed.Handle("GET /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.listDashboards)))
 	authed.Handle("POST /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.createDashboard)))
