@@ -7,18 +7,20 @@ import (
 	"github.com/steezrcom/steezr-erp/internal/ai"
 	"github.com/steezrcom/steezr-erp/internal/auth"
 	"github.com/steezrcom/steezr-erp/internal/entities"
+	"github.com/steezrcom/steezr-erp/internal/spa"
 	"github.com/steezrcom/steezr-erp/internal/tenant"
 )
 
 type Server struct {
-	log         *slog.Logger
-	users       *auth.UserService
-	sessions    *auth.SessionService
-	memberships *auth.MembershipService
-	tenants     *tenant.Service
-	entities    *entities.Service
-	proposer    *ai.Proposer
+	log           *slog.Logger
+	users         *auth.UserService
+	sessions      *auth.SessionService
+	memberships   *auth.MembershipService
+	tenants       *tenant.Service
+	entities      *entities.Service
+	proposer      *ai.Proposer
 	secureCookies bool
+	spaDir        string
 }
 
 type Deps struct {
@@ -31,6 +33,9 @@ type Deps struct {
 	Proposer    *ai.Proposer
 	// SecureCookies toggles the Secure flag on session cookies. Set true behind HTTPS.
 	SecureCookies bool
+	// SPADir is the path to the built React app. When empty the SPA route 503s,
+	// which is expected in API-only dev mode where Vite serves the UI.
+	SPADir string
 }
 
 func New(d Deps) *Server {
@@ -43,6 +48,7 @@ func New(d Deps) *Server {
 		entities:      d.Entities,
 		proposer:      d.Proposer,
 		secureCookies: d.SecureCookies,
+		spaDir:        d.SPADir,
 	}
 }
 
@@ -73,6 +79,10 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("DELETE /api/v1/entities/{name}/rows/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteRow)))
 
 	mux.Handle("/api/v1/", auth.RequireAuth(authed))
+
+	if s.spaDir != "" {
+		mux.Handle("/", spa.Handler(s.spaDir))
+	}
 
 	attach := (&auth.Middleware{
 		Sessions:    s.sessions,

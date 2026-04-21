@@ -59,6 +59,7 @@ func run(log *slog.Logger) error {
 		Entities:      entities.NewService(pool),
 		Proposer:      ai.NewProposer(cfg.AnthropicAPIKey),
 		SecureCookies: strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true"),
+		SPADir:        os.Getenv("SPA_DIR"),
 	})
 
 	srv := &http.Server{

@@ -1,0 +1,154 @@
+export type DataType =
+  | 'text'
+  | 'integer'
+  | 'bigint'
+  | 'numeric'
+  | 'boolean'
+  | 'date'
+  | 'timestamptz'
+  | 'uuid'
+  | 'jsonb'
+  | 'reference'
+
+export interface User {
+  id: string
+  email: string
+  name: string
+  email_verified_at: string | null
+  created_at: string
+}
+
+export interface Membership {
+  id: string
+  org_id: string
+  org_slug: string
+  org_name: string
+  role: 'owner' | 'admin' | 'member'
+}
+
+export interface Field {
+  id: string
+  name: string
+  display_name: string
+  data_type: DataType
+  is_required: boolean
+  is_unique: boolean
+  reference_entity?: string
+}
+
+export interface Entity {
+  id: string
+  name: string
+  display_name: string
+  description?: string
+  fields: Field[]
+  created_at: string
+}
+
+export interface MeResponse {
+  user: User
+  memberships: Membership[]
+  active_membership: Membership | null
+}
+
+export interface RefOption {
+  ID: string
+  Label: string
+}
+
+export interface RowsResponse {
+  entity: Entity
+  rows: Record<string, unknown>[]
+  ref_options: Record<string, RefOption[]>
+}
+
+export class ApiError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(path, {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+    },
+    ...init,
+  })
+  if (res.status === 204) return undefined as T
+  const text = await res.text()
+  const body = text ? JSON.parse(text) : null
+  if (!res.ok) {
+    const msg = (body && (body.error as string)) || `HTTP ${res.status}`
+    throw new ApiError(res.status, msg)
+  }
+  return body as T
+}
+
+export const api = {
+  signup: (body: {
+    email: string
+    name: string
+    password: string
+    org_name?: string
+    org_slug?: string
+  }) => request<{ user: User; active_org_id: string | null }>('/api/v1/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }),
+
+  login: (body: { email: string; password: string }) =>
+    request<{ user: User }>('/api/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  logout: () => request<void>('/api/v1/auth/logout', { method: 'POST' }),
+
+  me: () => request<MeResponse>('/api/v1/me'),
+
+  createOrg: (body: { name: string; slug: string }) =>
+    request<{ membership: Membership }>('/api/v1/orgs', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  activateMembership: (id: string) =>
+    request<{ active_membership: Membership }>(
+      `/api/v1/memberships/${id}/activate`,
+      { method: 'POST' }
+    ),
+
+  listEntities: () =>
+    request<{ entities: Entity[] }>('/api/v1/entities').then((r) => r.entities),
+
+  proposeEntity: (description: string) =>
+    request<{ entity: Entity }>('/api/v1/entities', {
+      method: 'POST',
+      body: JSON.stringify({ description }),
+    }).then((r) => r.entity),
+
+  getEntity: (name: string) =>
+    request<{ entity: Entity }>(`/api/v1/entities/${encodeURIComponent(name)}`).then(
+      (r) => r.entity
+    ),
+
+  listRows: (name: string) =>
+    request<RowsResponse>(`/api/v1/entities/${encodeURIComponent(name)}/rows`),
+
+  createRow: (name: string, values: Record<string, string>) =>
+    request<{ id: string }>(
+      `/api/v1/entities/${encodeURIComponent(name)}/rows`,
+      { method: 'POST', body: JSON.stringify({ values }) }
+    ),
+
+  deleteRow: (name: string, id: string) =>
+    request<void>(
+      `/api/v1/entities/${encodeURIComponent(name)}/rows/${encodeURIComponent(id)}`,
+      { method: 'DELETE' }
+    ),
+}
