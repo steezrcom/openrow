@@ -9,7 +9,7 @@ import {
   type UseFormSetValue,
 } from 'react-hook-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, X } from 'lucide-react'
 import {
   api,
   ApiError,
@@ -666,6 +666,7 @@ function FilterRow({
         fieldName={current?.field}
         referenceEntity={field?.reference_entity}
         register={register}
+        control={control}
       />
       <button
         type="button"
@@ -689,6 +690,7 @@ function FilterValueInput({
   fieldName,
   referenceEntity,
   register,
+  control,
 }: {
   index: number
   op: string
@@ -699,6 +701,7 @@ function FilterValueInput({
   fieldName: string | undefined
   referenceEntity: string | undefined
   register: UseFormRegister<FormValues>
+  control: Control<FormValues>
 }) {
   const name = `filters.${index}.value` as const
   const binding = register(name)
@@ -706,9 +709,39 @@ function FilterValueInput({
   if (isNullOp) {
     return <Input disabled placeholder="—" />
   }
+
   if (isInOp) {
-    return <Input placeholder="comma, separated, values" {...binding} />
+    if (dataType === 'reference' && entityName && fieldName && referenceEntity) {
+      return (
+        <Controller
+          control={control}
+          name={name}
+          render={({ field }) => (
+            <RefMultiSelect
+              entityName={entityName}
+              fieldName={fieldName}
+              value={String(field.value ?? '')}
+              onChange={field.onChange}
+            />
+          )}
+        />
+      )
+    }
+    return (
+      <Controller
+        control={control}
+        name={name}
+        render={({ field }) => (
+          <TagsInput
+            value={String(field.value ?? '')}
+            onChange={field.onChange}
+            placeholder="add value + Enter"
+          />
+        )}
+      />
+    )
   }
+
   if (dataType === 'reference' && entityName && fieldName && referenceEntity) {
     return <RefValueSelect entityName={entityName} fieldName={fieldName} bindingName={name} register={register} />
   }
@@ -758,5 +791,194 @@ function RefValueSelect({
         <option key={o.ID} value={o.ID}>{o.Label}</option>
       ))}
     </select>
+  )
+}
+
+function splitCSV(v: string): string[] {
+  return v
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function joinCSV(items: string[]): string {
+  return items.join(', ')
+}
+
+function RefMultiSelect({
+  entityName,
+  fieldName,
+  value,
+  onChange,
+}: {
+  entityName: string
+  fieldName: string
+  value: string
+  onChange: (next: string) => void
+}) {
+  const { data, isLoading } = useFieldOptions(entityName, fieldName)
+  const options = data ?? []
+  const selectedIds = splitCSV(value)
+  const selected = selectedIds.map(
+    (id) => options.find((o) => o.ID === id) ?? { ID: id, Label: id.slice(0, 8) + '…' }
+  )
+
+  const [search, setSearch] = useState('')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    if (open) document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+
+  const q = search.trim().toLowerCase()
+  const filtered = options.filter(
+    (o) => !selectedIds.includes(o.ID) && (!q || o.Label.toLowerCase().includes(q))
+  )
+
+  function add(id: string) {
+    if (selectedIds.includes(id)) return
+    onChange(joinCSV([...selectedIds, id]))
+    setSearch('')
+  }
+  function remove(id: string) {
+    onChange(joinCSV(selectedIds.filter((x) => x !== id)))
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <div
+        className="flex min-h-[40px] flex-wrap items-center gap-1 rounded-md border border-input bg-background p-1.5 text-sm focus-within:ring-2 focus-within:ring-ring"
+        onClick={() => setOpen(true)}
+      >
+        {selected.map((o) => (
+          <span
+            key={o.ID}
+            className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs text-primary"
+          >
+            {o.Label}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                remove(o.ID)
+              }}
+              className="-mr-1 rounded p-0.5 hover:bg-primary/20"
+              aria-label={`Remove ${o.Label}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          className="flex-1 min-w-[80px] bg-transparent outline-none"
+          placeholder={
+            isLoading ? 'loading…' : selected.length ? '' : 'type to filter…'
+          }
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setOpen(true)
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Backspace' && search === '' && selectedIds.length) {
+              remove(selectedIds[selectedIds.length - 1])
+            }
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              if (filtered.length) add(filtered[0].ID)
+            }
+            if (e.key === 'Escape') setOpen(false)
+          }}
+        />
+      </div>
+      {open && (filtered.length > 0 || isLoading) && (
+        <div className="absolute left-0 right-0 z-30 mt-1 max-h-52 overflow-auto rounded-md border border-border bg-card shadow-lg">
+          {isLoading && (
+            <div className="px-3 py-2 text-xs text-muted-foreground">loading…</div>
+          )}
+          {filtered.map((o) => (
+            <button
+              key={o.ID}
+              type="button"
+              onClick={() => add(o.ID)}
+              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-accent"
+            >
+              {o.Label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TagsInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string
+  onChange: (next: string) => void
+  placeholder?: string
+}) {
+  const tags = splitCSV(value)
+  const [input, setInput] = useState('')
+
+  function addTag(raw: string) {
+    const clean = raw.trim()
+    if (!clean || tags.includes(clean)) {
+      setInput('')
+      return
+    }
+    onChange(joinCSV([...tags, clean]))
+    setInput('')
+  }
+  function removeTag(t: string) {
+    onChange(joinCSV(tags.filter((x) => x !== t)))
+  }
+
+  return (
+    <div className="flex min-h-[40px] flex-wrap items-center gap-1 rounded-md border border-input bg-background p-1.5 text-sm focus-within:ring-2 focus-within:ring-ring">
+      {tags.map((t) => (
+        <span
+          key={t}
+          className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs"
+        >
+          {t}
+          <button
+            type="button"
+            onClick={() => removeTag(t)}
+            className="-mr-1 rounded p-0.5 hover:bg-accent"
+            aria-label={`Remove ${t}`}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        className="flex-1 min-w-[80px] bg-transparent outline-none"
+        placeholder={placeholder}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault()
+            addTag(input)
+          }
+          if (e.key === 'Backspace' && input === '' && tags.length) {
+            removeTag(tags[tags.length - 1])
+          }
+        }}
+        onBlur={() => {
+          if (input.trim()) addTag(input)
+        }}
+      />
+    </div>
   )
 }
