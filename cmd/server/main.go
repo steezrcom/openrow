@@ -81,6 +81,11 @@ func run(log *slog.Logger) error {
 	eventRouter := flows.NewEntityEventRouter(flowSvc, flowDispatcher, log)
 	entSvc.SetChangeHandler(eventRouter.Handle)
 
+	// Cron scheduler: one goroutine polling Postgres every 30s. Shut down
+	// when the signal-aware ctx is cancelled.
+	flowScheduler := flows.NewScheduler(flowSvc, flowDispatcher, log)
+	flowScheduler.Start(ctx)
+
 	api := httpapi.New(httpapi.Deps{
 		Log:            log,
 		Users:          auth.NewUserService(pool),

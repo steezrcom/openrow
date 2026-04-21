@@ -97,18 +97,35 @@ func (s *Service) Create(ctx context.Context, tenantID string, in CreateFlowInpu
 		}
 	}
 
+	// For cron flows, compute the first scheduled time from the cron
+	// expression in trigger_config.cron. Reject malformed expressions
+	// up front so the user sees the error immediately.
+	var nextRunAt *time.Time
+	if in.TriggerKind == TriggerCron {
+		expr := cronExpression(triggerCfg)
+		if expr == "" {
+			return nil, errors.New("cron trigger requires trigger_config.cron")
+		}
+		schedule, perr := ParseCron(expr)
+		if perr != nil {
+			return nil, fmt.Errorf("invalid cron expression: %w", perr)
+		}
+		next := schedule.Next(time.Now()).UTC()
+		nextRunAt = &next
+	}
+
 	var f Flow
 	var triggerCfgOut, allowlistOut []byte
 	err = s.pool.QueryRow(ctx, `
 		INSERT INTO openrow.flows
 			(tenant_id, name, description, goal, trigger_kind, trigger_config,
-			 tool_allowlist, mode, enabled, created_by_user_id, webhook_token_hash)
-		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, true, $9, $10)
+			 tool_allowlist, mode, enabled, created_by_user_id, webhook_token_hash, next_run_at)
+		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, true, $9, $10, $11)
 		RETURNING id, tenant_id, name, COALESCE(description, ''), goal, trigger_kind,
 		          trigger_config, tool_allowlist, mode, enabled, created_by_user_id,
 		          created_at, updated_at`,
 		tenantID, in.Name, in.Description, in.Goal,
-		string(in.TriggerKind), triggerCfg, allowlist, string(in.Mode), createdBy, tokenHash,
+		string(in.TriggerKind), triggerCfg, allowlist, string(in.Mode), createdBy, tokenHash, nextRunAt,
 	).Scan(&f.ID, &f.TenantID, &f.Name, &f.Description, &f.Goal, &f.TriggerKind,
 		&triggerCfgOut, &allowlistOut, &f.Mode, &f.Enabled, &f.CreatedByUserID,
 		&f.CreatedAt, &f.UpdatedAt)
@@ -233,15 +250,32 @@ func (s *Service) Update(ctx context.Context, tenantID, id string, in UpdateFlow
 		triggerCfg = json.RawMessage("{}")
 	}
 
+	// Recompute next_run_at when a cron flow's expression (or trigger_kind)
+	// has changed. For non-cron flows we clear the column so the scheduler
+	// ignores them.
+	var nextRunAt *time.Time
+	if existing.TriggerKind == TriggerCron {
+		expr := cronExpression(triggerCfg)
+		if expr == "" {
+			return nil, errors.New("cron trigger requires trigger_config.cron")
+		}
+		schedule, perr := ParseCron(expr)
+		if perr != nil {
+			return nil, fmt.Errorf("invalid cron expression: %w", perr)
+		}
+		next := schedule.Next(time.Now()).UTC()
+		nextRunAt = &next
+	}
+
 	_, err = s.pool.Exec(ctx, `
 		UPDATE openrow.flows
 		SET name = $1, description = NULLIF($2, ''), goal = $3,
 		    trigger_kind = $4, trigger_config = $5, tool_allowlist = $6,
-		    mode = $7, enabled = $8, updated_at = now()
-		WHERE tenant_id = $9 AND id = $10`,
+		    mode = $7, enabled = $8, next_run_at = $9, updated_at = now()
+		WHERE tenant_id = $10 AND id = $11`,
 		existing.Name, existing.Description, existing.Goal,
 		string(existing.TriggerKind), triggerCfg, allowlist,
-		string(existing.Mode), existing.Enabled,
+		string(existing.Mode), existing.Enabled, nextRunAt,
 		tenantID, id)
 	if err != nil {
 		return nil, err
@@ -298,6 +332,50 @@ func (s *Service) ListEntityEventMatches(ctx context.Context, tenantID, entity, 
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+// dueCronFlows returns enabled cron-triggered flows whose next_run_at has
+// passed. Used by the scheduler; not exposed through the HTTP API.
+func (s *Service) dueCronFlows(ctx context.Context) ([]Flow, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, tenant_id, name, COALESCE(description, ''), goal, trigger_kind,
+		       trigger_config, tool_allowlist, mode, enabled, created_by_user_id,
+		       created_at, updated_at
+		FROM openrow.flows
+		WHERE enabled = true
+		  AND trigger_kind = 'cron'
+		  AND next_run_at IS NOT NULL
+		  AND next_run_at <= now()`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Flow, 0)
+	for rows.Next() {
+		var f Flow
+		var triggerCfg, allowlist []byte
+		if err := rows.Scan(&f.ID, &f.TenantID, &f.Name, &f.Description, &f.Goal, &f.TriggerKind,
+			&triggerCfg, &allowlist, &f.Mode, &f.Enabled, &f.CreatedByUserID,
+			&f.CreatedAt, &f.UpdatedAt); err != nil {
+			return nil, err
+		}
+		f.TriggerConfig = triggerCfg
+		if err := json.Unmarshal(allowlist, &f.ToolAllowlist); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// setNextRun updates a flow's scheduled next run time. Called by the
+// scheduler after dispatching (to advance) and by Create/Update when a
+// cron flow is (re)defined.
+func (s *Service) setNextRun(ctx context.Context, flowID string, at time.Time) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE openrow.flows SET next_run_at = $1 WHERE id = $2`,
+		at.UTC(), flowID)
+	return err
 }
 
 // --- Runs ----------------------------------------------------------------
