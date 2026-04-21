@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import { useChatStore, type ChatAction } from '@/lib/chat'
+import { Markdown } from '@/components/Markdown'
 import { cn } from '@/lib/utils'
 
 const PROMPT_SUGGESTIONS = [
@@ -220,9 +221,7 @@ function Message({ turn }: { turn: { role: 'user' | 'assistant'; text: string; a
           {turn.actions.map((a, i) => <ActionPill key={i} action={a} />)}
         </div>
       )}
-      {turn.text && (
-        <div className="whitespace-pre-wrap text-sm text-foreground">{turn.text}</div>
-      )}
+      {turn.text && <Markdown>{turn.text}</Markdown>}
     </div>
   )
 }
