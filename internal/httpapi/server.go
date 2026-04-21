@@ -110,6 +110,9 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("GET /api/v1/entities/{name}/fields/{field}/options", auth.RequireMembership(http.HandlerFunc(s.listFieldOptions)))
 	authed.Handle("POST /api/v1/chat/messages", auth.RequireMembership(http.HandlerFunc(s.chat)))
 
+	authed.Handle("GET /api/v1/templates", auth.RequireAuth(http.HandlerFunc(s.listTemplates)))
+	authed.Handle("POST /api/v1/templates/{id}/apply", auth.RequireMembership(http.HandlerFunc(s.applyTemplate)))
+
 	authed.Handle("GET /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.listDashboards)))
 	authed.Handle("POST /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.createDashboard)))
 	authed.Handle("GET /api/v1/dashboards/{slug}", auth.RequireMembership(http.HandlerFunc(s.getDashboard)))

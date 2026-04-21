@@ -270,6 +270,16 @@ export const api = {
       `/api/v1/entities/${encodeURIComponent(entityName)}/fields/${encodeURIComponent(fieldName)}/options`
     ).then((r) => r.options),
 
+  listTemplates: () =>
+    request<{ templates: { id: string; name: string; description: string }[] }>(
+      '/api/v1/templates'
+    ).then((r) => r.templates),
+
+  applyTemplate: (id: string) =>
+    request<void>(`/api/v1/templates/${encodeURIComponent(id)}/apply`, {
+      method: 'POST',
+    }),
+
   listDashboards: () =>
     request<{ dashboards: Dashboard[] }>('/api/v1/dashboards').then((r) => r.dashboards),
 

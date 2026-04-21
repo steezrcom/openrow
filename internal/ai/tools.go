@@ -11,6 +11,7 @@ import (
 
 	"github.com/steezrcom/steezr-erp/internal/entities"
 	"github.com/steezrcom/steezr-erp/internal/reports"
+	"github.com/steezrcom/steezr-erp/internal/templates"
 )
 
 // tool describes one action the agent can invoke.
@@ -306,6 +307,49 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 				Summary:    fmt.Sprintf("Dropped field %q from %q", req.Field, req.Entity),
 				EntityName: req.Entity,
 			}
+		},
+	})
+
+	add(tool{
+		name:        "list_templates",
+		description: "List pre-built workspace templates (entities + starter dashboards).",
+		schema:      anthropic.ToolInputSchemaParam{Properties: map[string]any{}},
+		handler: func(_ context.Context, _ json.RawMessage) execResult {
+			ts := templates.All()
+			out := make([]map[string]string, len(ts))
+			for i, t := range ts {
+				out[i] = map[string]string{"id": t.ID, "name": t.Name, "description": t.Description}
+			}
+			return execResult{Summary: fmt.Sprintf("Listed %d templates", len(out)), Result: out}
+		},
+	})
+
+	add(tool{
+		name: "apply_template",
+		description: "Install a pre-built template (entities + default dashboard) in the current workspace. " +
+			"Fails if any template entity name conflicts with an existing entity, so prefer fresh workspaces. " +
+			"Use when the user says 'set up an agency workspace' or asks for a starting point.",
+		schema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{
+				"id": stringProp("Template id; currently 'agency' is the supported value."),
+			},
+			Required: []string{"id"},
+		},
+		handler: func(ctx context.Context, input json.RawMessage) execResult {
+			var req struct {
+				ID string `json:"id"`
+			}
+			if err := json.Unmarshal(input, &req); err != nil {
+				return execResult{Err: err}
+			}
+			t, ok := templates.Get(req.ID)
+			if !ok {
+				return execResult{Err: fmt.Errorf("template %q not found", req.ID)}
+			}
+			if err := t.Install(ctx, tenantID, pgSchema, svc, dash); err != nil {
+				return execResult{Err: err}
+			}
+			return execResult{Summary: fmt.Sprintf("Installed template %q", req.ID)}
 		},
 	})
 

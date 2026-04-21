@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { useState } from 'react'
-import { Sparkles, ArrowUpRight, Table2 } from 'lucide-react'
+import { Sparkles, ArrowUpRight, Table2, Package } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import { useEntities } from '@/hooks/useEntities'
 import { useMe } from '@/hooks/useMe'
@@ -46,12 +46,12 @@ function Dashboard() {
         )}
 
         {entities.data && entities.data.length === 0 && (
-          <Card className="p-6 text-sm text-muted-foreground">
-            <p>Nothing yet.</p>
-            <p className="mt-1">
-              Describe your first entity above. We'll turn it into a real database table.
-            </p>
-          </Card>
+          <>
+            <TemplatePicker />
+            <Card className="mt-3 p-6 text-sm text-muted-foreground">
+              <p>Or describe your first entity above. We'll turn it into a real database table.</p>
+            </Card>
+          </>
         )}
 
         {entities.data && entities.data.length > 0 && (
@@ -83,6 +83,60 @@ function Dashboard() {
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+function TemplatePicker() {
+  const qc = useQueryClient()
+  const templates = useQuery({ queryKey: ['templates'], queryFn: api.listTemplates })
+  const [error, setError] = useState<string | null>(null)
+  const [appliedId, setAppliedId] = useState<string | null>(null)
+
+  const apply = useMutation({
+    mutationFn: (id: string) => api.applyTemplate(id),
+    onMutate: (id) => setAppliedId(id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['entities'] })
+      await qc.invalidateQueries({ queryKey: ['dashboards'] })
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'failed'),
+    onSettled: () => setAppliedId(null),
+  })
+
+  if (templates.isLoading || !templates.data || templates.data.length === 0) return null
+
+  return (
+    <div>
+      <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        Start from a template
+      </h3>
+      <div className="grid gap-2">
+        {templates.data.map((t) => (
+          <Card key={t.id} className="flex items-center gap-4 p-4">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <Package className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h4 className="font-medium">{t.name}</h4>
+                <Pill>{t.id}</Pill>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
+            </div>
+            <Button
+              onClick={() => {
+                setError(null)
+                apply.mutate(t.id)
+              }}
+              disabled={apply.isPending}
+            >
+              {appliedId === t.id ? 'Installing…' : 'Install'}
+            </Button>
+          </Card>
+        ))}
+      </div>
+      {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
     </div>
   )
 }
