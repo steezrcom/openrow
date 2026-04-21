@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/sashabaranov/go-openai"
 
+	"github.com/openrow/openrow/internal/connectors"
 	"github.com/openrow/openrow/internal/entities"
 	"github.com/openrow/openrow/internal/reports"
 	"github.com/openrow/openrow/internal/templates"
@@ -119,7 +120,9 @@ func objectSchema(properties map[string]any, required ...string) map[string]any 
 
 // BuildToolset constructs a Toolset closed over the given tenant + schema.
 // Call it once per run; the tools hold references to the tenant context.
-func (a *Agent) BuildToolset(_ context.Context, tenantID, pgSchema string) *Toolset {
+// Includes the built-in entity/dashboard tools plus one tool per action on
+// each installed + enabled connector the tenant has configured.
+func (a *Agent) BuildToolset(ctx context.Context, tenantID, pgSchema string) *Toolset {
 	svc := a.entities
 	dash := a.dashboards
 
@@ -572,7 +575,53 @@ func (a *Agent) BuildToolset(_ context.Context, tenantID, pgSchema string) *Tool
 		},
 	})
 
+	a.addConnectorTools(ctx, tenantID, add)
+
 	return ts
+}
+
+// addConnectorTools appends one tool per Action on each installed + enabled
+// connector the tenant has configured. Tools are named
+// "connector.<id>.<action_id>" so allowlists can target them precisely.
+// Connectors that aren't StatusAvailable are skipped.
+func (a *Agent) addConnectorTools(ctx context.Context, tenantID string, add func(Tool)) {
+	if a.connectors == nil {
+		return
+	}
+	configs, err := a.connectors.List(ctx, tenantID)
+	if err != nil {
+		return
+	}
+	for _, cfgLoop := range configs {
+		cfg := cfgLoop
+		if !cfg.Enabled {
+			continue
+		}
+		descriptor := connectors.Get(cfg.ConnectorID)
+		if descriptor == nil || descriptor.Status != connectors.StatusAvailable {
+			continue
+		}
+		for _, actionLoop := range descriptor.Actions {
+			action := actionLoop
+			toolName := "connector." + cfg.ConnectorID + "." + action.ID
+			add(Tool{
+				Name:        toolName,
+				Description: action.Description,
+				Schema:      action.Schema,
+				Mutates:     action.Mutates,
+				Handler: func(ctx context.Context, input json.RawMessage) ExecResult {
+					result, err := action.Handler(ctx, cfg.Credentials, input)
+					if err != nil {
+						return ExecResult{Err: err}
+					}
+					return ExecResult{
+						Summary: action.Name,
+						Result:  result,
+					}
+				},
+			})
+		}
+	}
 }
 
 func stringProp(desc string) map[string]any {

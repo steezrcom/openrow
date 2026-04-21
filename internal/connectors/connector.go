@@ -5,7 +5,10 @@
 // "available".
 package connectors
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // Status is the connector's readiness for end users.
 type Status string
@@ -57,4 +60,26 @@ type Connector struct {
 	// Return nil on success; the returned error message is shown to the user.
 	// Leave nil for stubs and for connectors where verification isn't useful.
 	Test func(ctx context.Context, creds map[string]string) error `json:"-"`
+
+	// Actions are the verbs this connector exposes to the agent and to
+	// flows. Each Action becomes a tool named
+	// "connector.<connector_id>.<action_id>" when the tenant has this
+	// connector installed and enabled.
+	Actions []Action `json:"-"`
 }
+
+// Action is a callable verb on a connector. The handler receives the
+// tenant's decrypted credentials and a JSON-encoded input matching Schema;
+// it returns any JSON-marshallable value (compact shapes preferred — it's
+// fed back to the LLM as a tool result).
+type Action struct {
+	ID          string
+	Name        string
+	Description string
+	Mutates     bool
+	Schema      map[string]any
+	Handler     ActionHandler
+}
+
+// ActionHandler executes a single invocation of a connector action.
+type ActionHandler func(ctx context.Context, creds map[string]string, input json.RawMessage) (any, error)
