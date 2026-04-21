@@ -307,6 +307,19 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ report_ids: reportIDs }) }
     ),
 
+  addReport: (slug: string, body: {
+    title: string
+    subtitle?: string
+    widget_type: WidgetType
+    query_spec: QuerySpec
+    options?: ReportOptions
+    width?: number
+  }) =>
+    request<{ report: Report }>(
+      `/api/v1/dashboards/${encodeURIComponent(slug)}/reports`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ).then((r) => r.report),
+
   executeReport: (id: string, range?: { from?: string; to?: string }) => {
     const qs = new URLSearchParams()
     if (range?.from) qs.set('from', range.from)

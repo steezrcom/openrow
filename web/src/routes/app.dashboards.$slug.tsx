@@ -1,14 +1,13 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
 import { useEffect, useState } from 'react'
-import { Check, ChevronRight, Pencil, Trash2 } from 'lucide-react'
-import { api, ApiError, type Report } from '@/lib/api'
+import { Check, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
+import { api, type Report } from '@/lib/api'
 import { useDashboard } from '@/hooks/useDashboards'
-import { Button, Card, Input, Label, Pill } from '@/components/ui'
-import { Drawer } from '@/components/Drawer'
+import { Button, Card, Input, Pill } from '@/components/ui'
 import { SortableReports } from '@/components/SortableReports'
 import { DateRangePicker, type DateRange } from '@/components/DateRangePicker'
+import { ReportEditor } from '@/components/ReportEditor'
 
 export const Route = createFileRoute('/app/dashboards/$slug')({
   component: DashboardPage,
@@ -20,7 +19,9 @@ function DashboardPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [range, setRange] = useState<DateRange>({ presetKey: 'all' })
-  const [editingReport, setEditingReport] = useState<Report | null>(null)
+  const [editorMode, setEditorMode] = useState<
+    { kind: 'create'; slug: string } | { kind: 'edit'; report: Report } | null
+  >(null)
 
   const del = useMutation({
     mutationFn: () => api.deleteDashboard(slug),
@@ -74,6 +75,9 @@ function DashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           <DateRangePicker value={range} onChange={setRange} />
+          <Button onClick={() => setEditorMode({ kind: 'create', slug })}>
+            <Plus className="mr-1 h-3.5 w-3.5" /> Add report
+          </Button>
           <Button
             variant="ghost"
             onClick={() => {
@@ -85,10 +89,7 @@ function DashboardPage() {
         </div>
       </header>
 
-      <ReportEditDrawer
-        report={editingReport}
-        onClose={() => setEditingReport(null)}
-      />
+      <ReportEditor mode={editorMode} onClose={() => setEditorMode(null)} />
 
       {reports.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted-foreground">
@@ -99,7 +100,7 @@ function DashboardPage() {
         <SortableReports
           dashboard={d}
           range={{ from: range.from, to: range.to }}
-          onEditReport={setEditingReport}
+          onEditReport={(r) => setEditorMode({ kind: 'edit', report: r })}
         />
       )}
     </div>
@@ -167,131 +168,3 @@ function DashboardHeading({ dashboard }: { dashboard: { slug: string; name: stri
   )
 }
 
-function ReportEditDrawer({
-  report,
-  onClose,
-}: {
-  report: Report | null
-  onClose: () => void
-}) {
-  const qc = useQueryClient()
-  type FormValues = {
-    title: string
-    subtitle: string
-    width: number
-    stacked: boolean
-    number_format: 'decimal' | 'integer' | 'currency' | 'percent'
-    currency_code: string
-  }
-  const { register, handleSubmit, reset, watch, formState: { isSubmitting } } = useForm<FormValues>()
-  const numberFormat = watch('number_format')
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (report) {
-      const opts = report.options ?? {}
-      reset({
-        title: report.title,
-        subtitle: report.subtitle ?? '',
-        width: report.width,
-        stacked: Boolean(opts.stacked),
-        number_format: (opts.number_format as FormValues['number_format']) ?? 'decimal',
-        currency_code: opts.currency_code ?? '',
-      })
-      setError(null)
-    }
-  }, [report, reset])
-
-  const canStack = report?.widget_type === 'bar' || report?.widget_type === 'area'
-
-  const mut = useMutation({
-    mutationFn: (v: FormValues) =>
-      api.updateReport(report!.id, {
-        title: v.title,
-        subtitle: v.subtitle,
-        width: Number(v.width),
-        options: {
-          stacked: canStack ? Boolean(v.stacked) : undefined,
-          number_format: v.number_format,
-          currency_code: v.number_format === 'currency' ? (v.currency_code || 'USD') : undefined,
-        },
-      }),
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['dashboard'] })
-      await qc.invalidateQueries({ queryKey: ['report-exec'] })
-      onClose()
-    },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'failed'),
-  })
-
-  const selectClass =
-    'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm'
-
-  return (
-    <Drawer
-      open={report !== null}
-      onClose={onClose}
-      title="Edit report"
-      subtitle={report?.title}
-    >
-      <form className="space-y-5" onSubmit={handleSubmit((v) => mut.mutate(v))}>
-        <div className="space-y-1.5">
-          <Label>Title</Label>
-          <Input {...register('title', { required: true })} />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Subtitle</Label>
-          <Input {...register('subtitle')} />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Width (1–12 columns)</Label>
-          <Input type="number" min={1} max={12} step={1} {...register('width', { required: true })} />
-        </div>
-
-        <div className="space-y-3 border-t border-border pt-4">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Display options
-          </p>
-          <div className="space-y-1.5">
-            <Label>Number format</Label>
-            <select className={selectClass} {...register('number_format')}>
-              <option value="decimal">Decimal (1,234.56)</option>
-              <option value="integer">Integer (1,234)</option>
-              <option value="currency">Currency</option>
-              <option value="percent">Percent (0–1 → %)</option>
-            </select>
-          </div>
-          {numberFormat === 'currency' && (
-            <div className="space-y-1.5">
-              <Label>Currency code</Label>
-              <Input placeholder="CZK / USD / EUR" {...register('currency_code')} />
-            </div>
-          )}
-          {canStack && (
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="h-4 w-4 rounded border-input" {...register('stacked')} />
-              <span>Stacked (series stack on top of each other)</span>
-            </label>
-          )}
-        </div>
-
-        {error && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {error}
-          </div>
-        )}
-        <div className="flex items-center gap-2">
-          <Button type="submit" disabled={isSubmitting || mut.isPending}>
-            {mut.isPending ? 'Saving…' : 'Save'}
-          </Button>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          To change the chart type or query (e.g. "group by month instead" or "split by customer"), ask Claude in the chat.
-        </p>
-      </form>
-    </Drawer>
-  )
-}
