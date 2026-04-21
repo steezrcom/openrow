@@ -144,7 +144,7 @@ func (s *Service) List(ctx context.Context, tenantID string) ([]Entity, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Entity
+	out := make([]Entity, 0)
 	for rows.Next() {
 		var e Entity
 		if err := rows.Scan(&e.ID, &e.TenantID, &e.Name, &e.DisplayName, &e.Description,

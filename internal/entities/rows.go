@@ -40,7 +40,7 @@ func (s *Service) ListRows(ctx context.Context, schema string, ent *Entity, limi
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Row
+	out := make([]Row, 0)
 	for rows.Next() {
 		vals, err := rows.Values()
 		if err != nil {
@@ -158,7 +158,7 @@ func (s *Service) ListRefOptions(ctx context.Context, schema string, target *Ent
 		return nil, err
 	}
 	defer rows.Close()
-	var out []RefOption
+	out := make([]RefOption, 0)
 	for rows.Next() {
 		var opt RefOption
 		if err := rows.Scan(&opt.ID, &opt.Label); err != nil {

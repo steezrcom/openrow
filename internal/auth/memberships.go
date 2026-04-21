@@ -56,7 +56,7 @@ func (s *MembershipService) ForUser(ctx context.Context, userID string) ([]Membe
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Membership
+	out := make([]Membership, 0)
 	for rows.Next() {
 		var m Membership
 		var role string
