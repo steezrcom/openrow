@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight, Clock } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button, Card, Input } from '@/components/ui'
 import { useEntities } from '@/hooks/useEntities'
+import { useFieldOptions } from '@/hooks/useFieldOptions'
+import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
 const searchSchema = z.object({
@@ -39,11 +41,12 @@ function addDays(d: Date, n: number): Date {
   return r
 }
 
-const DAY_LABELS = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne']
+const DAY_KEYS = ['day.mon', 'day.tue', 'day.wed', 'day.thu', 'day.fri', 'day.sat', 'day.sun'] as const
 
 function TimePage() {
   const navigate = useNavigate({ from: Route.fullPath })
   const search = Route.useSearch()
+  const t = useT()
   const entities = useEntities()
   const hasTimeEntries = Boolean(entities.data?.some((e) => e.name === 'time_entries'))
 
@@ -75,6 +78,21 @@ function TimePage() {
     },
   })
 
+  // listRows doesn't join reference labels, so hydrate project/task names
+  // from the ref-options endpoint and map them by id on the client.
+  const projectOpts = useFieldOptions(hasTimeEntries ? 'time_entries' : undefined, 'project')
+  const taskOpts = useFieldOptions(hasTimeEntries ? 'time_entries' : undefined, 'task')
+  const projectLabels = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const o of projectOpts.data ?? []) m.set(o.ID, o.Label)
+    return m
+  }, [projectOpts.data])
+  const taskLabels = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const o of taskOpts.data ?? []) m.set(o.ID, o.Label)
+    return m
+  }, [taskOpts.data])
+
   if (!entities.isLoading && !hasTimeEntries) {
     return (
       <div className="mx-auto max-w-3xl px-8 py-10">
@@ -90,9 +108,9 @@ function TimePage() {
   const pivot = new Map<string, { key: RowKey; byDay: Record<string, { total: number; entries: Record<string, unknown>[] }> }>()
   for (const r of rows) {
     const projectID = String(r.project ?? '')
-    const projectLabel = String(r.project__label ?? projectID.slice(0, 8))
+    const projectLabel = projectLabels.get(projectID) ?? (projectID ? projectID.slice(0, 8) : '(no project)')
     const taskID = r.task == null || r.task === '' ? null : String(r.task)
-    const taskLabel = r.task__label == null ? null : String(r.task__label)
+    const taskLabel = taskID ? (taskLabels.get(taskID) ?? null) : null
     const rowKey = `${projectID}::${taskID ?? ''}`
     if (!pivot.has(rowKey)) {
       pivot.set(rowKey, {
@@ -126,16 +144,16 @@ function TimePage() {
       <header className="mb-6 flex items-center justify-between gap-4">
         <div>
           <p className="text-xs text-muted-foreground">
-            <Link to="/app" className="hover:text-foreground">Home</Link>
+            <Link to="/app" className="hover:text-foreground">{t('nav.home')}</Link>
             <span className="mx-2">/</span>
-            Timesheet
+            {t('nav.timesheet')}
           </p>
           <h1 className="mt-2 flex items-center gap-3 text-2xl font-semibold tracking-tight">
             <Clock className="h-5 w-5 text-primary" />
-            Week of {iso(start)}
+            {t('timesheet.title')} {iso(start)}
           </h1>
           <p className="mt-1 text-xs text-muted-foreground">
-            {weekTotal.toFixed(1)} h logged this week
+            {weekTotal.toFixed(1)} {t('timesheet.logged')}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -146,7 +164,7 @@ function TimePage() {
             variant="ghost"
             onClick={() => navigate({ search: () => ({ week: iso(mondayOf(new Date())) }) })}
           >
-            This week
+            {t('timesheet.thisWeek')}
           </Button>
           <Button variant="ghost" onClick={() => nav(1)}>
             <ChevronRight className="h-4 w-4" />
@@ -158,16 +176,16 @@ function TimePage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-muted-foreground">
-              <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Project</th>
+              <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">{t('timesheet.project')}</th>
               {days.map((d, i) => (
                 <th key={iso(d)} className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider">
-                  <div>{DAY_LABELS[i]}</div>
+                  <div>{t(DAY_KEYS[i])}</div>
                   <div className="text-[10px] font-normal normal-case">
                     {String(d.getDate()).padStart(2, '0')}.{String(d.getMonth() + 1).padStart(2, '0')}
                   </div>
                 </th>
               ))}
-              <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider">Total</th>
+              <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider">{t('timesheet.totals')}</th>
             </tr>
           </thead>
           <tbody>
@@ -177,7 +195,7 @@ function TimePage() {
                   colSpan={9}
                   className="px-4 py-8 text-center text-sm text-muted-foreground"
                 >
-                  No time logged this week. Start the timer in the header or add entries by hand.
+                  {t('timesheet.empty')}
                 </td>
               </tr>
             ) : (
@@ -217,7 +235,7 @@ function TimePage() {
           </tbody>
           <tfoot className="bg-muted/20">
             <tr>
-              <td className="px-4 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Totals</td>
+              <td className="px-4 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('timesheet.totals')}</td>
               {days.map((d) => {
                 const k = iso(d)
                 const t = totalByDay[k]

@@ -18,6 +18,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppTimeRouteImport } from './routes/app.time'
+import { Route as AppSettingsPreferencesRouteImport } from './routes/app.settings.preferences'
 import { Route as AppSettingsLlmRouteImport } from './routes/app.settings.llm'
 import { Route as AppEntitiesNameRouteImport } from './routes/app.entities.$name'
 import { Route as AppDashboardsSlugRouteImport } from './routes/app.dashboards.$slug'
@@ -67,6 +68,11 @@ const AppTimeRoute = AppTimeRouteImport.update({
   path: '/time',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSettingsPreferencesRoute = AppSettingsPreferencesRouteImport.update({
+  id: '/settings/preferences',
+  path: '/settings/preferences',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsLlmRoute = AppSettingsLlmRouteImport.update({
   id: '/settings/llm',
   path: '/settings/llm',
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
   '/app/settings/llm': typeof AppSettingsLlmRoute
+  '/app/settings/preferences': typeof AppSettingsPreferencesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -109,6 +116,7 @@ export interface FileRoutesByTo {
   '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
   '/app/settings/llm': typeof AppSettingsLlmRoute
+  '/app/settings/preferences': typeof AppSettingsPreferencesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -124,6 +132,7 @@ export interface FileRoutesById {
   '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
   '/app/settings/llm': typeof AppSettingsLlmRoute
+  '/app/settings/preferences': typeof AppSettingsPreferencesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -140,6 +149,7 @@ export interface FileRouteTypes {
     | '/app/dashboards/$slug'
     | '/app/entities/$name'
     | '/app/settings/llm'
+    | '/app/settings/preferences'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -153,6 +163,7 @@ export interface FileRouteTypes {
     | '/app/dashboards/$slug'
     | '/app/entities/$name'
     | '/app/settings/llm'
+    | '/app/settings/preferences'
   id:
     | '__root__'
     | '/'
@@ -167,6 +178,7 @@ export interface FileRouteTypes {
     | '/app/dashboards/$slug'
     | '/app/entities/$name'
     | '/app/settings/llm'
+    | '/app/settings/preferences'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -244,6 +256,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTimeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/settings/preferences': {
+      id: '/app/settings/preferences'
+      path: '/settings/preferences'
+      fullPath: '/app/settings/preferences'
+      preLoaderRoute: typeof AppSettingsPreferencesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/settings/llm': {
       id: '/app/settings/llm'
       path: '/settings/llm'
@@ -274,6 +293,7 @@ interface AppRouteChildren {
   AppDashboardsSlugRoute: typeof AppDashboardsSlugRoute
   AppEntitiesNameRoute: typeof AppEntitiesNameRoute
   AppSettingsLlmRoute: typeof AppSettingsLlmRoute
+  AppSettingsPreferencesRoute: typeof AppSettingsPreferencesRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -282,6 +302,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppDashboardsSlugRoute: AppDashboardsSlugRoute,
   AppEntitiesNameRoute: AppEntitiesNameRoute,
   AppSettingsLlmRoute: AppSettingsLlmRoute,
+  AppSettingsPreferencesRoute: AppSettingsPreferencesRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

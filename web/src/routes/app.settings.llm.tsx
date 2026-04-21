@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { api, ApiError, type LLMProvider, type LLMTestResult } from '@/lib/api'
 import { Button, Card, Input, Label } from '@/components/ui'
+import { SettingsTabs } from '@/components/SettingsTabs'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/app/settings/llm')({
@@ -169,6 +170,8 @@ function LLMSettingsPage() {
           (GPT-4o, Claude 3.5+, Llama 3.1 8B+, Qwen 2.5 7B+).
         </p>
       </header>
+
+      <SettingsTabs active="llm" />
 
       {showFallbackBanner && (
         <Card className="mb-6 border-primary/30 bg-primary/5 p-4 text-sm">
