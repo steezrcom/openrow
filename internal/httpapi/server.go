@@ -7,30 +7,40 @@ import (
 	"github.com/steezrcom/steezr-erp/internal/ai"
 	"github.com/steezrcom/steezr-erp/internal/auth"
 	"github.com/steezrcom/steezr-erp/internal/entities"
+	"github.com/steezrcom/steezr-erp/internal/mailer"
 	"github.com/steezrcom/steezr-erp/internal/spa"
 	"github.com/steezrcom/steezr-erp/internal/tenant"
 )
 
 type Server struct {
-	log           *slog.Logger
-	users         *auth.UserService
-	sessions      *auth.SessionService
-	memberships   *auth.MembershipService
-	tenants       *tenant.Service
-	entities      *entities.Service
-	proposer      *ai.Proposer
-	secureCookies bool
-	spaDir        string
+	log            *slog.Logger
+	users          *auth.UserService
+	sessions       *auth.SessionService
+	memberships    *auth.MembershipService
+	passwordResets *auth.PasswordResetService
+	tenants        *tenant.Service
+	entities       *entities.Service
+	proposer       *ai.Proposer
+	agent          *ai.Agent
+	mail           mailer.Mailer
+	appURL         string
+	secureCookies  bool
+	spaDir         string
 }
 
 type Deps struct {
-	Log         *slog.Logger
-	Users       *auth.UserService
-	Sessions    *auth.SessionService
-	Memberships *auth.MembershipService
-	Tenants     *tenant.Service
-	Entities    *entities.Service
-	Proposer    *ai.Proposer
+	Log            *slog.Logger
+	Users          *auth.UserService
+	Sessions       *auth.SessionService
+	Memberships    *auth.MembershipService
+	PasswordResets *auth.PasswordResetService
+	Tenants        *tenant.Service
+	Entities       *entities.Service
+	Proposer       *ai.Proposer
+	Agent          *ai.Agent
+	Mailer         mailer.Mailer
+	// AppURL is the public URL users should be directed to (used in email links).
+	AppURL string
 	// SecureCookies toggles the Secure flag on session cookies. Set true behind HTTPS.
 	SecureCookies bool
 	// SPADir is the path to the built React app. When empty the SPA route 503s,
@@ -39,16 +49,24 @@ type Deps struct {
 }
 
 func New(d Deps) *Server {
+	appURL := d.AppURL
+	if appURL == "" {
+		appURL = "http://localhost:5173"
+	}
 	return &Server{
-		log:           d.Log,
-		users:         d.Users,
-		sessions:      d.Sessions,
-		memberships:   d.Memberships,
-		tenants:       d.Tenants,
-		entities:      d.Entities,
-		proposer:      d.Proposer,
-		secureCookies: d.SecureCookies,
-		spaDir:        d.SPADir,
+		log:            d.Log,
+		users:          d.Users,
+		sessions:       d.Sessions,
+		memberships:    d.Memberships,
+		passwordResets: d.PasswordResets,
+		tenants:        d.Tenants,
+		entities:       d.Entities,
+		proposer:       d.Proposer,
+		agent:          d.Agent,
+		mail:           d.Mailer,
+		appURL:         appURL,
+		secureCookies:  d.SecureCookies,
+		spaDir:         d.SPADir,
 	}
 }
 
@@ -59,6 +77,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/signup", s.signup)
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	mux.HandleFunc("POST /api/v1/auth/logout", s.logout)
+	mux.HandleFunc("POST /api/v1/auth/forgot", s.forgotPassword)
+	mux.HandleFunc("POST /api/v1/auth/reset", s.resetPassword)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -77,6 +97,10 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("GET /api/v1/entities/{name}/rows", auth.RequireMembership(http.HandlerFunc(s.listRows)))
 	authed.Handle("POST /api/v1/entities/{name}/rows", auth.RequireMembership(http.HandlerFunc(s.createRow)))
 	authed.Handle("DELETE /api/v1/entities/{name}/rows/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteRow)))
+	authed.Handle("PATCH /api/v1/entities/{name}/rows/{id}", auth.RequireMembership(http.HandlerFunc(s.updateRow)))
+	authed.Handle("POST /api/v1/entities/{name}/fields", auth.RequireMembership(http.HandlerFunc(s.addField)))
+	authed.Handle("DELETE /api/v1/entities/{name}/fields/{field}", auth.RequireMembership(http.HandlerFunc(s.dropField)))
+	authed.Handle("POST /api/v1/chat/messages", auth.RequireMembership(http.HandlerFunc(s.chat)))
 
 	mux.Handle("/api/v1/", auth.RequireAuth(authed))
 

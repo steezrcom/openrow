@@ -10,8 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as ResetRouteImport } from './routes/reset'
 import { Route as OrgsRouteImport } from './routes/orgs'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ForgotRouteImport } from './routes/forgot'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
@@ -22,6 +24,11 @@ const SignupRoute = SignupRouteImport.update({
   path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResetRoute = ResetRouteImport.update({
+  id: '/reset',
+  path: '/reset',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrgsRoute = OrgsRouteImport.update({
   id: '/orgs',
   path: '/orgs',
@@ -30,6 +37,11 @@ const OrgsRoute = OrgsRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotRoute = ForgotRouteImport.update({
+  id: '/forgot',
+  path: '/forgot',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRoute = AppRouteImport.update({
@@ -56,16 +68,20 @@ const AppEntitiesNameRoute = AppEntitiesNameRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/forgot': typeof ForgotRoute
   '/login': typeof LoginRoute
   '/orgs': typeof OrgsRoute
+  '/reset': typeof ResetRoute
   '/signup': typeof SignupRoute
   '/app/': typeof AppIndexRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/forgot': typeof ForgotRoute
   '/login': typeof LoginRoute
   '/orgs': typeof OrgsRoute
+  '/reset': typeof ResetRoute
   '/signup': typeof SignupRoute
   '/app': typeof AppIndexRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
@@ -74,8 +90,10 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/forgot': typeof ForgotRoute
   '/login': typeof LoginRoute
   '/orgs': typeof OrgsRoute
+  '/reset': typeof ResetRoute
   '/signup': typeof SignupRoute
   '/app/': typeof AppIndexRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
@@ -85,19 +103,31 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/forgot'
     | '/login'
     | '/orgs'
+    | '/reset'
     | '/signup'
     | '/app/'
     | '/app/entities/$name'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/orgs' | '/signup' | '/app' | '/app/entities/$name'
+  to:
+    | '/'
+    | '/forgot'
+    | '/login'
+    | '/orgs'
+    | '/reset'
+    | '/signup'
+    | '/app'
+    | '/app/entities/$name'
   id:
     | '__root__'
     | '/'
     | '/app'
+    | '/forgot'
     | '/login'
     | '/orgs'
+    | '/reset'
     | '/signup'
     | '/app/'
     | '/app/entities/$name'
@@ -106,8 +136,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  ForgotRoute: typeof ForgotRoute
   LoginRoute: typeof LoginRoute
   OrgsRoute: typeof OrgsRoute
+  ResetRoute: typeof ResetRoute
   SignupRoute: typeof SignupRoute
 }
 
@@ -118,6 +150,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset': {
+      id: '/reset'
+      path: '/reset'
+      fullPath: '/reset'
+      preLoaderRoute: typeof ResetRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/orgs': {
@@ -132,6 +171,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forgot': {
+      id: '/forgot'
+      path: '/forgot'
+      fullPath: '/forgot'
+      preLoaderRoute: typeof ForgotRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -180,8 +226,10 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  ForgotRoute: ForgotRoute,
   LoginRoute: LoginRoute,
   OrgsRoute: OrgsRoute,
+  ResetRoute: ResetRoute,
   SignupRoute: SignupRoute,
 }
 export const routeTree = rootRouteImport

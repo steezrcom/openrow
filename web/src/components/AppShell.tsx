@@ -15,6 +15,7 @@ import { api, type Entity, type Membership } from '@/lib/api'
 import { useMe } from '@/hooks/useMe'
 import { useEntities } from '@/hooks/useEntities'
 import { cn } from '@/lib/utils'
+import { ChatPanel } from '@/components/ChatPanel'
 
 export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe()
@@ -31,6 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         loadingEntities={entities.isLoading}
       />
       <main className="flex-1 overflow-x-hidden">{children}</main>
+      <ChatPanel />
     </div>
   )
 }

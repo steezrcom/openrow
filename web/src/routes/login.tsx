@@ -48,10 +48,14 @@ function LoginPage() {
           </Button>
         </form>
       </Card>
-      <p className="mt-4 text-center text-sm text-muted-foreground">
-        No account?{' '}
-        <Link to="/signup" className="text-primary hover:underline">Sign up</Link>
-      </p>
+      <div className="mt-4 flex items-center justify-between text-sm">
+        <Link to="/forgot" className="text-muted-foreground hover:text-foreground">
+          Forgot password?
+        </Link>
+        <Link to="/signup" className="text-muted-foreground hover:text-foreground">
+          No account? <span className="text-primary">Sign up</span>
+        </Link>
+      </div>
     </AuthShell>
   )
 }

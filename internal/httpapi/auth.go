@@ -92,6 +92,48 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type forgotReq struct {
+	Email string `json:"email"`
+}
+
+func (s *Server) forgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req forgotReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	token, email, name, err := s.passwordResets.Create(r.Context(), req.Email)
+	if err != nil {
+		s.log.Error("password reset create", "err", err)
+	} else if token != "" {
+		link := s.appURL + "/reset?token=" + token
+		body := "Hi " + name + ",\n\nReset your steezr password:\n" + link + "\n\nThis link expires in 1 hour. If you didn't ask for this, ignore this email."
+		if err := s.mail.Send(r.Context(), email, "Reset your steezr password", body); err != nil {
+			s.log.Error("send reset email", "err", err)
+		}
+	}
+	// Always 204 so callers can't enumerate which emails are registered.
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type resetReq struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
+func (s *Server) resetPassword(w http.ResponseWriter, r *http.Request) {
+	var req resetReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if err := s.passwordResets.Consume(r.Context(), req.Token, req.Password); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(auth.SessionCookie); err == nil && cookie.Value != "" {
 		_ = s.sessions.Delete(r.Context(), cookie.Value)

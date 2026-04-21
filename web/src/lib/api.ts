@@ -60,6 +60,16 @@ export interface RowsResponse {
   entity: Entity
   rows: Record<string, unknown>[]
   ref_options: Record<string, RefOption[]>
+  total: number
+  page: number
+  limit: number
+}
+
+export interface ListRowsParams {
+  sort?: string
+  dir?: 'asc' | 'desc'
+  page?: number
+  limit?: number
 }
 
 export class ApiError extends Error {
@@ -109,6 +119,18 @@ export const api = {
 
   logout: () => request<void>('/api/v1/auth/logout', { method: 'POST' }),
 
+  forgotPassword: (email: string) =>
+    request<void>('/api/v1/auth/forgot', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (token: string, password: string) =>
+    request<void>('/api/v1/auth/reset', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
+
   me: () => request<MeResponse>('/api/v1/me'),
 
   createOrg: (body: { name: string; slug: string }) =>
@@ -137,8 +159,17 @@ export const api = {
       (r) => r.entity
     ),
 
-  listRows: (name: string) =>
-    request<RowsResponse>(`/api/v1/entities/${encodeURIComponent(name)}/rows`),
+  listRows: (name: string, params: ListRowsParams = {}) => {
+    const qs = new URLSearchParams()
+    if (params.sort) qs.set('sort', params.sort)
+    if (params.dir) qs.set('dir', params.dir)
+    if (params.page) qs.set('page', String(params.page))
+    if (params.limit) qs.set('limit', String(params.limit))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return request<RowsResponse>(
+      `/api/v1/entities/${encodeURIComponent(name)}/rows${suffix}`
+    )
+  },
 
   createRow: (name: string, values: Record<string, string>) =>
     request<{ id: string }>(
@@ -151,4 +182,47 @@ export const api = {
       `/api/v1/entities/${encodeURIComponent(name)}/rows/${encodeURIComponent(id)}`,
       { method: 'DELETE' }
     ),
+
+  updateRow: (name: string, id: string, values: Record<string, string>) =>
+    request<void>(
+      `/api/v1/entities/${encodeURIComponent(name)}/rows/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify({ values }) }
+    ),
+
+  addField: (name: string, field: {
+    name: string
+    display_name: string
+    data_type: DataType
+    is_required?: boolean
+    is_unique?: boolean
+    reference_entity?: string
+  }) =>
+    request<{ entity: Entity }>(
+      `/api/v1/entities/${encodeURIComponent(name)}/fields`,
+      { method: 'POST', body: JSON.stringify(field) }
+    ),
+
+  dropField: (name: string, field: string) =>
+    request<void>(
+      `/api/v1/entities/${encodeURIComponent(name)}/fields/${encodeURIComponent(field)}`,
+      { method: 'DELETE' }
+    ),
+
+  chat: (body: { history: { role: string; text: string }[]; message: string }) =>
+    request<{
+      assistant: {
+        role: 'assistant'
+        text: string
+        actions?: {
+          tool: string
+          input: unknown
+          summary: string
+          entity_name?: string
+          error?: string
+        }[]
+      }
+    }>('/api/v1/chat/messages', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 }

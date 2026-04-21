@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/steezrcom/steezr-erp/internal/auth"
@@ -85,7 +86,24 @@ func (s *Server) listRows(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "entity not found")
 		return
 	}
-	rows, err := s.entities.ListRows(r.Context(), m.PGSchema, ent, 200, 0)
+
+	q := r.URL.Query()
+	limit := parseIntDefault(q.Get("limit"), 50, 1, 200)
+	page := parseIntDefault(q.Get("page"), 1, 1, 1_000_000)
+	offset := (page - 1) * limit
+
+	rows, err := s.entities.ListRows(r.Context(), m.PGSchema, ent, entities.ListOptions{
+		Limit:   limit,
+		Offset:  offset,
+		SortBy:  q.Get("sort"),
+		SortDir: q.Get("dir"),
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	total, err := s.entities.CountRows(r.Context(), m.PGSchema, ent)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -101,7 +119,24 @@ func (s *Server) listRows(w http.ResponseWriter, r *http.Request) {
 		"entity":      entityDTO(ent),
 		"rows":        rows,
 		"ref_options": refOpts,
+		"total":       total,
+		"page":        page,
+		"limit":       limit,
 	})
+}
+
+func parseIntDefault(s string, def, min, max int) int {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return def
+	}
+	if n < min {
+		return min
+	}
+	if n > max {
+		return max
+	}
+	return n
 }
 
 func (s *Server) loadRefOptions(r *http.Request, ent *entities.Entity, schema, tenantID string) (map[string][]entities.RefOption, error) {
@@ -145,6 +180,59 @@ func (s *Server) createRow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
+}
+
+type updateRowReq struct {
+	Values map[string]string `json:"values"`
+}
+
+func (s *Server) addField(w http.ResponseWriter, r *http.Request) {
+	m, _ := auth.MembershipFromContext(r.Context())
+	var f entities.FieldSpec
+	if err := json.NewDecoder(r.Body).Decode(&f); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	ent, err := s.entities.AddField(r.Context(), m.TenantID, m.PGSchema, r.PathValue("name"), f)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"entity": entityDTO(ent)})
+}
+
+func (s *Server) dropField(w http.ResponseWriter, r *http.Request) {
+	m, _ := auth.MembershipFromContext(r.Context())
+	err := s.entities.DropField(r.Context(), m.TenantID, m.PGSchema,
+		r.PathValue("name"), r.PathValue("field"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) updateRow(w http.ResponseWriter, r *http.Request) {
+	m, _ := auth.MembershipFromContext(r.Context())
+	ent, err := s.entities.Get(r.Context(), m.TenantID, r.PathValue("name"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "entity not found")
+		return
+	}
+	var req updateRowReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if err := s.entities.UpdateRow(r.Context(), m.PGSchema, ent, r.PathValue("id"), req.Values); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeErr(w, http.StatusNotFound, "row not found")
+			return
+		}
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) deleteRow(w http.ResponseWriter, r *http.Request) {

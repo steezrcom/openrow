@@ -17,25 +17,40 @@ import (
 // Always contains "id", "created_at", "updated_at".
 type Row map[string]any
 
-// ListRows returns rows from the entity's table, ordered newest first.
-func (s *Service) ListRows(ctx context.Context, schema string, ent *Entity, limit, offset int) ([]Row, error) {
+// ListOptions controls pagination and sort for ListRows / CountRows.
+type ListOptions struct {
+	Limit   int
+	Offset  int
+	SortBy  string // field name; empty means "created_at"
+	SortDir string // "asc" or "desc"; empty means "desc"
+}
+
+// ListRows returns rows from the entity's table.
+func (s *Service) ListRows(ctx context.Context, schema string, ent *Entity, opts ListOptions) ([]Row, error) {
 	if !identRe.MatchString(schema) {
 		return nil, fmt.Errorf("invalid schema")
 	}
-	if limit <= 0 || limit > 500 {
-		limit = 50
+	if opts.Limit <= 0 || opts.Limit > 500 {
+		opts.Limit = 50
 	}
+	if opts.Offset < 0 {
+		opts.Offset = 0
+	}
+	sortBy, sortDir := resolveSort(ent, opts.SortBy, opts.SortDir)
+
 	cols := rowColumns(ent)
 	quoted := make([]string, len(cols))
 	for i, c := range cols {
 		quoted[i] = pgx.Identifier{c}.Sanitize()
 	}
 	q := fmt.Sprintf(
-		"SELECT %s FROM %s ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+		"SELECT %s FROM %s ORDER BY %s %s, id ASC LIMIT $1 OFFSET $2",
 		strings.Join(quoted, ", "),
 		pgx.Identifier{schema, ent.Name}.Sanitize(),
+		pgx.Identifier{sortBy}.Sanitize(),
+		sortDir,
 	)
-	rows, err := s.pool.Query(ctx, q, limit, offset)
+	rows, err := s.pool.Query(ctx, q, opts.Limit, opts.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +127,92 @@ func (s *Service) InsertRow(ctx context.Context, schema string, ent *Entity, inp
 		return "", err
 	}
 	return id, nil
+}
+
+// CountRows returns the number of rows in the entity's table.
+func (s *Service) CountRows(ctx context.Context, schema string, ent *Entity) (int, error) {
+	if !identRe.MatchString(schema) {
+		return 0, fmt.Errorf("invalid schema")
+	}
+	var n int
+	err := s.pool.QueryRow(ctx,
+		fmt.Sprintf("SELECT count(*) FROM %s",
+			pgx.Identifier{schema, ent.Name}.Sanitize()),
+	).Scan(&n)
+	return n, err
+}
+
+// resolveSort validates a sort column against the entity's fields + built-in timestamps,
+// falling back to created_at/desc.
+func resolveSort(ent *Entity, sortBy, sortDir string) (string, string) {
+	allowed := map[string]bool{"id": true, "created_at": true, "updated_at": true}
+	for _, f := range ent.Fields {
+		allowed[f.Name] = true
+	}
+	if !allowed[sortBy] {
+		sortBy = "created_at"
+	}
+	if sortDir != "asc" && sortDir != "desc" {
+		sortDir = "desc"
+	}
+	return sortBy, strings.ToUpper(sortDir)
+}
+
+// UpdateRow applies a partial update to one row. Missing fields in `input` are left alone.
+// Booleans are only updated when explicitly present (same rule as InsertRow).
+// Returns pgx.ErrNoRows if the row doesn't exist.
+func (s *Service) UpdateRow(ctx context.Context, schema string, ent *Entity, id string, input map[string]string) error {
+	if !identRe.MatchString(schema) {
+		return fmt.Errorf("invalid schema")
+	}
+
+	var (
+		sets   []string
+		params []any
+	)
+	idx := 1
+	for _, f := range ent.Fields {
+		raw, present := input[f.Name]
+		if !present {
+			continue
+		}
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			if f.IsRequired {
+				return fmt.Errorf("%s is required", f.Name)
+			}
+			sets = append(sets, fmt.Sprintf("%s = NULL", pgx.Identifier{f.Name}.Sanitize()))
+			continue
+		}
+		val, err := coerceValue(f.DataType, raw)
+		if err != nil {
+			return fmt.Errorf("%s: %w", f.Name, err)
+		}
+		sets = append(sets, fmt.Sprintf("%s = $%d", pgx.Identifier{f.Name}.Sanitize(), idx))
+		params = append(params, val)
+		idx++
+	}
+
+	if len(sets) == 0 {
+		return nil
+	}
+
+	sets = append(sets, "updated_at = now()")
+	params = append(params, id)
+
+	q := fmt.Sprintf("UPDATE %s SET %s WHERE id = $%d",
+		pgx.Identifier{schema, ent.Name}.Sanitize(),
+		strings.Join(sets, ", "),
+		idx,
+	)
+	tag, err := s.pool.Exec(ctx, q, params...)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 // DeleteRow removes one row by id. Returns pgx.ErrNoRows if not found.

@@ -16,6 +16,7 @@ import (
 	"github.com/steezrcom/steezr-erp/internal/config"
 	"github.com/steezrcom/steezr-erp/internal/entities"
 	"github.com/steezrcom/steezr-erp/internal/httpapi"
+	"github.com/steezrcom/steezr-erp/internal/mailer"
 	"github.com/steezrcom/steezr-erp/internal/store"
 	"github.com/steezrcom/steezr-erp/internal/tenant"
 )
@@ -50,16 +51,22 @@ func run(log *slog.Logger) error {
 	}
 	log.Info("migrations applied")
 
+	entSvc := entities.NewService(pool)
+
 	api := httpapi.New(httpapi.Deps{
-		Log:           log,
-		Users:         auth.NewUserService(pool),
-		Sessions:      auth.NewSessionService(pool),
-		Memberships:   auth.NewMembershipService(pool),
-		Tenants:       tenant.NewService(pool),
-		Entities:      entities.NewService(pool),
-		Proposer:      ai.NewProposer(cfg.AnthropicAPIKey),
-		SecureCookies: strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true"),
-		SPADir:        os.Getenv("SPA_DIR"),
+		Log:            log,
+		Users:          auth.NewUserService(pool),
+		Sessions:       auth.NewSessionService(pool),
+		Memberships:    auth.NewMembershipService(pool),
+		PasswordResets: auth.NewPasswordResetService(pool),
+		Tenants:        tenant.NewService(pool),
+		Entities:       entSvc,
+		Proposer:       ai.NewProposer(cfg.AnthropicAPIKey),
+		Agent:          ai.NewAgent(cfg.AnthropicAPIKey, entSvc),
+		Mailer:         &mailer.Stdout{Log: log},
+		AppURL:         getOr("APP_URL", "http://localhost:5173"),
+		SecureCookies:  strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true"),
+		SPADir:         os.Getenv("SPA_DIR"),
 	})
 
 	srv := &http.Server{
@@ -89,4 +96,11 @@ func run(log *slog.Logger) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+func getOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
