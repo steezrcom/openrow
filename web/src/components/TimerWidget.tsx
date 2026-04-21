@@ -77,7 +77,7 @@ function TimerWidgetInner() {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-[340px] rounded-md border border-border bg-card shadow-lg">
+        <div className="absolute bottom-full left-0 z-30 mb-1 w-[340px] rounded-md border border-border bg-card shadow-lg">
           {running ? (
             <RunningPanel elapsed={elapsed ?? ''} onClose={() => setOpen(false)} />
           ) : (
