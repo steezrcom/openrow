@@ -8,6 +8,7 @@ import (
 
 	"github.com/sashabaranov/go-openai"
 
+	"github.com/openrow/openrow/internal/connectors"
 	"github.com/openrow/openrow/internal/entities"
 	"github.com/openrow/openrow/internal/llm"
 	"github.com/openrow/openrow/internal/reports"
@@ -83,10 +84,11 @@ type Agent struct {
 	llm        *llm.Service
 	entities   *entities.Service
 	dashboards *reports.Service
+	connectors *connectors.Service
 }
 
-func NewAgent(llmSvc *llm.Service, ent *entities.Service, dash *reports.Service) *Agent {
-	return &Agent{llm: llmSvc, entities: ent, dashboards: dash}
+func NewAgent(llmSvc *llm.Service, ent *entities.Service, dash *reports.Service, conn *connectors.Service) *Agent {
+	return &Agent{llm: llmSvc, entities: ent, dashboards: dash, connectors: conn}
 }
 
 // Run executes a single conversation turn.

@@ -68,7 +68,7 @@ func run(log *slog.Logger) error {
 	llmSvc := llm.NewService(pool, enc, cfg.AnthropicAPIKey)
 	connectorSvc := connectors.NewService(pool, enc)
 	tenantSvc := tenant.NewService(pool)
-	agent := ai.NewAgent(llmSvc, entSvc, dashSvc)
+	agent := ai.NewAgent(llmSvc, entSvc, dashSvc, connectorSvc)
 	flowSvc := flows.NewService(pool)
 	flowRunner := flows.NewRunner(flowSvc, llmSvc, agent, tenantSvc)
 	flowDispatcher := flows.NewInMemoryDispatcher(flowSvc, flowRunner, 4, 256, log)
