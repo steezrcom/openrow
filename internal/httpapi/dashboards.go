@@ -87,6 +87,24 @@ func (s *Server) deleteDashboard(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type reorderReq struct {
+	ReportIDs []string `json:"report_ids"`
+}
+
+func (s *Server) reorderReports(w http.ResponseWriter, r *http.Request) {
+	m, _ := auth.MembershipFromContext(r.Context())
+	var in reorderReq
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if err := s.dashboards.ReorderReports(r.Context(), m.TenantID, r.PathValue("slug"), in.ReportIDs); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) addReport(w http.ResponseWriter, r *http.Request) {
 	m, _ := auth.MembershipFromContext(r.Context())
 	var in reports.CreateReportInput

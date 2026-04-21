@@ -289,6 +289,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  reorderReports: (slug: string, reportIDs: string[]) =>
+    request<void>(
+      `/api/v1/dashboards/${encodeURIComponent(slug)}/reports/reorder`,
+      { method: 'POST', body: JSON.stringify({ report_ids: reportIDs }) }
+    ),
+
   executeReport: (id: string, range?: { from?: string; to?: string }) => {
     const qs = new URLSearchParams()
     if (range?.from) qs.set('from', range.from)

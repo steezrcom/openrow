@@ -395,6 +395,44 @@ func (s *Service) UpdateReport(ctx context.Context, tenantID, reportID string, i
 	return err
 }
 
+// ReorderReports sets each report's position to its index in ids. All ids must
+// belong to the same dashboard in the given tenant.
+func (s *Service) ReorderReports(ctx context.Context, tenantID, slug string, ids []string) error {
+	d, err := s.Get(ctx, tenantID, slug)
+	if err != nil {
+		return err
+	}
+	existing := map[string]bool{}
+	for _, r := range d.Reports {
+		existing[r.ID] = true
+	}
+	if len(ids) != len(d.Reports) {
+		return fmt.Errorf("reorder: expected %d ids, got %d", len(d.Reports), len(ids))
+	}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if !existing[id] {
+			return fmt.Errorf("reorder: report %s not on this dashboard", id)
+		}
+		if seen[id] {
+			return fmt.Errorf("reorder: duplicate id %s", id)
+		}
+		seen[id] = true
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	for i, id := range ids {
+		if _, err := tx.Exec(ctx,
+			`UPDATE steezr.reports SET position = $1, updated_at = now() WHERE id = $2`, i, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *Service) DeleteReport(ctx context.Context, tenantID, reportID string) error {
 	tag, err := s.pool.Exec(ctx, `
 		DELETE FROM steezr.reports r

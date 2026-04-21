@@ -7,7 +7,7 @@ import { api, ApiError, type Report } from '@/lib/api'
 import { useDashboard } from '@/hooks/useDashboards'
 import { Button, Card, Input, Label, Pill } from '@/components/ui'
 import { Drawer } from '@/components/Drawer'
-import { ReportCard } from '@/components/ReportCard'
+import { SortableReports } from '@/components/SortableReports'
 import { DateRangePicker, type DateRange } from '@/components/DateRangePicker'
 
 export const Route = createFileRoute('/app/dashboards/$slug')({
@@ -96,16 +96,11 @@ function DashboardPage() {
           <p className="mt-1">Ask Claude to add one — e.g. "add a revenue-by-month line chart."</p>
         </Card>
       ) : (
-        <div className="grid grid-cols-12 gap-4">
-          {reports.map((r) => (
-            <ReportCard
-              key={r.id}
-              report={r}
-              range={{ from: range.from, to: range.to }}
-              onEdit={() => setEditingReport(r)}
-            />
-          ))}
-        </div>
+        <SortableReports
+          dashboard={d}
+          range={{ from: range.from, to: range.to }}
+          onEditReport={setEditingReport}
+        />
       )}
     </div>
   )

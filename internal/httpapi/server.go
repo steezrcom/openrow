@@ -115,6 +115,7 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("PATCH /api/v1/dashboards/{slug}", auth.RequireMembership(http.HandlerFunc(s.patchDashboard)))
 	authed.Handle("DELETE /api/v1/dashboards/{slug}", auth.RequireMembership(http.HandlerFunc(s.deleteDashboard)))
 	authed.Handle("POST /api/v1/dashboards/{slug}/reports", auth.RequireMembership(http.HandlerFunc(s.addReport)))
+	authed.Handle("POST /api/v1/dashboards/{slug}/reports/reorder", auth.RequireMembership(http.HandlerFunc(s.reorderReports)))
 	authed.Handle("PATCH /api/v1/reports/{id}", auth.RequireMembership(http.HandlerFunc(s.patchReport)))
 	authed.Handle("DELETE /api/v1/reports/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteReport)))
 	authed.Handle("POST /api/v1/reports/{id}/execute", auth.RequireMembership(http.HandlerFunc(s.executeReport)))
