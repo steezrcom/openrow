@@ -33,13 +33,14 @@ func (s *Server) listFlowTools(w http.ResponseWriter, r *http.Request) {
 // --- flows ---------------------------------------------------------------
 
 type createFlowReq struct {
-	Name          string             `json:"name"`
-	Description   string             `json:"description"`
-	Goal          string             `json:"goal"`
-	TriggerKind   flows.TriggerKind  `json:"trigger_kind"`
-	TriggerConfig json.RawMessage    `json:"trigger_config,omitempty"`
-	ToolAllowlist []string           `json:"tool_allowlist"`
-	Mode          flows.Mode         `json:"mode"`
+	Name                 string            `json:"name"`
+	Description          string            `json:"description"`
+	Goal                 string            `json:"goal"`
+	TriggerKind          flows.TriggerKind `json:"trigger_kind"`
+	TriggerConfig        json.RawMessage   `json:"trigger_config,omitempty"`
+	ToolAllowlist        []string          `json:"tool_allowlist"`
+	Mode                 flows.Mode        `json:"mode"`
+	WebhookSigningSecret string            `json:"webhook_signing_secret,omitempty"`
 }
 
 func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
@@ -65,14 +66,15 @@ func (s *Server) createFlow(w http.ResponseWriter, r *http.Request) {
 		userID = u.ID
 	}
 	res, err := s.flows.Create(r.Context(), m.TenantID, flows.CreateFlowInput{
-		Name:          in.Name,
-		Description:   in.Description,
-		Goal:          in.Goal,
-		TriggerKind:   defaultTriggerKind(in.TriggerKind),
-		TriggerConfig: in.TriggerConfig,
-		ToolAllowlist: in.ToolAllowlist,
-		Mode:          defaultMode(in.Mode),
-		CreatedByUser: userID,
+		Name:                 in.Name,
+		Description:          in.Description,
+		Goal:                 in.Goal,
+		TriggerKind:          defaultTriggerKind(in.TriggerKind),
+		TriggerConfig:        in.TriggerConfig,
+		ToolAllowlist:        in.ToolAllowlist,
+		Mode:                 defaultMode(in.Mode),
+		CreatedByUser:        userID,
+		WebhookSigningSecret: in.WebhookSigningSecret,
 	})
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())

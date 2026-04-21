@@ -66,7 +66,20 @@ type Connector struct {
 	// "connector.<connector_id>.<action_id>" when the tenant has this
 	// connector installed and enabled.
 	Actions []Action `json:"-"`
+
+	// VerifyWebhook, if set, authenticates a webhook payload that claims
+	// to come from this provider. Called when a flow's trigger is
+	// webhook + webhook_connector_id equals this descriptor's ID. Return
+	// nil if the signature is valid; any error rejects the request as
+	// 401. Leave nil for connectors that don't send webhooks.
+	VerifyWebhook WebhookVerifier `json:"-"`
 }
+
+// WebhookVerifier authenticates a webhook request against a per-flow
+// signing secret. Headers are the full request header map; body is the
+// raw request body. The secret is decrypted plaintext from the flow's
+// stored webhook_secret.
+type WebhookVerifier func(ctx context.Context, secret string, headers map[string][]string, body []byte) error
 
 // Action is a callable verb on a connector. The handler receives the
 // tenant's decrypted credentials and a JSON-encoded input matching Schema;

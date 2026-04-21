@@ -9,14 +9,17 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/openrow/openrow/internal/secrets"
 )
 
 type Service struct {
 	pool *pgxpool.Pool
+	enc  *secrets.Encrypter
 }
 
-func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{pool: pool}
+func NewService(pool *pgxpool.Pool, enc *secrets.Encrypter) *Service {
+	return &Service{pool: pool, enc: enc}
 }
 
 var (
@@ -35,6 +38,12 @@ type CreateFlowInput struct {
 	ToolAllowlist []string
 	Mode          Mode
 	CreatedByUser string
+
+	// WebhookSigningSecret, when non-empty, is encrypted and stored on
+	// the flow so the webhook endpoint can verify incoming payloads
+	// against the connector declared in trigger_config.webhook_connector_id.
+	// Only meaningful for TriggerKind=webhook.
+	WebhookSigningSecret string
 }
 
 func validateMode(m Mode) error {
@@ -89,11 +98,22 @@ func (s *Service) Create(ctx context.Context, tenantID string, in CreateFlowInpu
 	var (
 		tokenPlaintext string
 		tokenHash      []byte
+		signingSecret  []byte
 	)
 	if in.TriggerKind == TriggerWebhook {
 		tokenPlaintext, tokenHash, err = NewWebhookToken()
 		if err != nil {
 			return nil, err
+		}
+		if in.WebhookSigningSecret != "" {
+			if s.enc == nil {
+				return nil, errors.New("flows service missing encrypter; cannot store signing secret")
+			}
+			ct, encErr := s.enc.Encrypt([]byte(in.WebhookSigningSecret))
+			if encErr != nil {
+				return nil, fmt.Errorf("encrypt signing secret: %w", encErr)
+			}
+			signingSecret = ct
 		}
 	}
 
@@ -119,13 +139,15 @@ func (s *Service) Create(ctx context.Context, tenantID string, in CreateFlowInpu
 	err = s.pool.QueryRow(ctx, `
 		INSERT INTO openrow.flows
 			(tenant_id, name, description, goal, trigger_kind, trigger_config,
-			 tool_allowlist, mode, enabled, created_by_user_id, webhook_token_hash, next_run_at)
-		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, true, $9, $10, $11)
+			 tool_allowlist, mode, enabled, created_by_user_id,
+			 webhook_token_hash, webhook_secret, next_run_at)
+		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, true, $9, $10, $11, $12)
 		RETURNING id, tenant_id, name, COALESCE(description, ''), goal, trigger_kind,
 		          trigger_config, tool_allowlist, mode, enabled, created_by_user_id,
 		          created_at, updated_at`,
 		tenantID, in.Name, in.Description, in.Goal,
-		string(in.TriggerKind), triggerCfg, allowlist, string(in.Mode), createdBy, tokenHash, nextRunAt,
+		string(in.TriggerKind), triggerCfg, allowlist, string(in.Mode), createdBy,
+		tokenHash, signingSecret, nextRunAt,
 	).Scan(&f.ID, &f.TenantID, &f.Name, &f.Description, &f.Goal, &f.TriggerKind,
 		&triggerCfgOut, &allowlistOut, &f.Mode, &f.Enabled, &f.CreatedByUserID,
 		&f.CreatedAt, &f.UpdatedAt)

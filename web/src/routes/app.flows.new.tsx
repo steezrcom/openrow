@@ -24,6 +24,8 @@ type FormValues = {
   event_update: boolean
   event_delete: boolean
   cron: string
+  webhook_connector_id: string
+  webhook_signing_secret: string
 }
 
 function NewFlowPage() {
@@ -32,6 +34,8 @@ function NewFlowPage() {
   const navigate = useNavigate()
   const tools = useQuery({ queryKey: ['flow-tools'], queryFn: api.listFlowTools })
   const entities = useEntities()
+  const connectors = useQuery({ queryKey: ['connectors'], queryFn: api.listConnectors })
+  const verifiers = (connectors.data ?? []).filter((c) => c.has_verify_webhook)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [webhookInfo, setWebhookInfo] = useState<{ url: string; token: string; flowId: string } | null>(null)
@@ -42,6 +46,7 @@ function NewFlowPage() {
       trigger_kind: 'manual', entity: '',
       event_insert: true, event_update: false, event_delete: false,
       cron: '0 9 * * *',
+      webhook_connector_id: '', webhook_signing_secret: '',
     },
   })
   const triggerKind = watch('trigger_kind')
@@ -60,6 +65,9 @@ function NewFlowPage() {
       if (v.trigger_kind === 'cron') {
         triggerConfig.cron = v.cron
       }
+      if (v.trigger_kind === 'webhook' && v.webhook_connector_id) {
+        triggerConfig.webhook_connector_id = v.webhook_connector_id
+      }
       return api.createFlow({
         name: v.name,
         description: v.description,
@@ -68,6 +76,10 @@ function NewFlowPage() {
         trigger_config: triggerConfig,
         tool_allowlist: Array.from(selected),
         mode: v.mode,
+        webhook_signing_secret:
+          v.trigger_kind === 'webhook' && v.webhook_connector_id && v.webhook_signing_secret
+            ? v.webhook_signing_secret
+            : undefined,
       })
     },
     onSuccess: (res) => {
@@ -187,8 +199,37 @@ function NewFlowPage() {
           )}
 
           {triggerKind === 'webhook' && (
-            <div className="rounded-md border border-border bg-muted/10 p-3 text-xs text-muted-foreground">
-              {t('flows.trigger.webhook.hint.create')}
+            <div className="space-y-3 rounded-md border border-border bg-muted/10 p-3">
+              <p className="text-xs text-muted-foreground">{t('flows.trigger.webhook.hint.create')}</p>
+              {verifiers.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="webhook_connector_id">{t('flows.trigger.webhook.verifier')}</Label>
+                  <select
+                    id="webhook_connector_id"
+                    {...register('webhook_connector_id')}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    <option value="">{t('flows.trigger.webhook.verifier.none')}</option>
+                    {verifiers.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  {watch('webhook_connector_id') && (
+                    <>
+                      <Label htmlFor="webhook_signing_secret">{t('flows.trigger.webhook.signingSecret')}</Label>
+                      <Input
+                        id="webhook_signing_secret"
+                        type="password"
+                        placeholder="whsec_…"
+                        {...register('webhook_signing_secret')}
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        {t('flows.trigger.webhook.signingSecret.hint')}
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
