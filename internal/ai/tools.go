@@ -624,6 +624,11 @@ func querySpecProperties() map[string]any {
 			"required": []string{"field", "dir"},
 		},
 		"limit": map[string]any{"type": "integer", "description": "Max rows; default 500 for series, 100 for tables."},
+		"date_filter_field": stringProp(
+			"Optional: date/timestamp field that should respond to the dashboard's date-range selector. " +
+				"Set this on reports whose numbers should change when the user picks a different time window. " +
+				"Leave empty on all-time KPIs.",
+		),
 	}
 }
 

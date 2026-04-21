@@ -113,6 +113,11 @@ type QuerySpec struct {
 	Aggregate *Aggregate `json:"aggregate,omitempty"`
 	Sort      *Sort      `json:"sort,omitempty"`
 	Limit     int        `json:"limit,omitempty"`
+
+	// DateFilterField names the date/timestamp field that reacts to the
+	// dashboard's date range selector. Empty means the report ignores the
+	// dashboard range (useful for KPIs that should always look at all data).
+	DateFilterField string `json:"date_filter_field,omitempty"`
 }
 
 var identRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
@@ -153,6 +158,9 @@ func (s *QuerySpec) Validate() error {
 		if s.Sort.Dir != "asc" && s.Sort.Dir != "desc" {
 			return fmt.Errorf("sort: dir must be asc or desc")
 		}
+	}
+	if s.DateFilterField != "" && !identRe.MatchString(s.DateFilterField) {
+		return fmt.Errorf("invalid date_filter_field %q", s.DateFilterField)
 	}
 	return nil
 }

@@ -33,6 +33,7 @@ Dashboards and reports:
 - Aggregate fns: count | sum | avg | min | max. sum/avg need numeric fields.
 - Before creating a dashboard that references an entity that doesn't exist yet, either create the entity first or tell the user you'll need them to confirm adding it.
 - Prefer 2-4 reports per dashboard, widths chosen from 3/4/6/8/12 in a 12-column grid.
+- For time-scoped reports (e.g. "revenue this month"), set query_spec.date_filter_field to the timestamp/date column users expect to scope by (usually created_at or a domain date field like invoice_date). This makes them respond to the dashboard's date range picker.
 
 Mutations:
 - Only mutate what the user asked for. If the user asks to add an entity, don't also add sample rows unless they said so.

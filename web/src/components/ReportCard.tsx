@@ -30,11 +30,17 @@ const CHART_COLORS = [
   '#818cf8',
 ]
 
-export function ReportCard({ report }: { report: Report }) {
+export function ReportCard({
+  report,
+  range,
+}: {
+  report: Report
+  range?: { from?: string; to?: string }
+}) {
   const qc = useQueryClient()
   const exec = useQuery({
-    queryKey: ['report-exec', report.id, report.updated_at],
-    queryFn: () => api.executeReport(report.id),
+    queryKey: ['report-exec', report.id, report.updated_at, range?.from ?? '', range?.to ?? ''],
+    queryFn: () => api.executeReport(report.id, range),
     staleTime: 15_000,
   })
 

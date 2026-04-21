@@ -265,11 +265,16 @@ export const api = {
   deleteDashboard: (slug: string) =>
     request<void>(`/api/v1/dashboards/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
 
-  executeReport: (id: string) =>
-    request<{ result: ReportResult }>(
-      `/api/v1/reports/${encodeURIComponent(id)}/execute`,
+  executeReport: (id: string, range?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams()
+    if (range?.from) qs.set('from', range.from)
+    if (range?.to) qs.set('to', range.to)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return request<{ result: ReportResult }>(
+      `/api/v1/reports/${encodeURIComponent(id)}/execute${suffix}`,
       { method: 'POST' }
-    ).then((r) => r.result),
+    ).then((r) => r.result)
+  },
 
   deleteReport: (id: string) =>
     request<void>(`/api/v1/reports/${encodeURIComponent(id)}`, { method: 'DELETE' }),

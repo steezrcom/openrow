@@ -1,10 +1,12 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { ChevronRight, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useDashboard } from '@/hooks/useDashboards'
 import { Button, Card, Pill } from '@/components/ui'
 import { ReportCard } from '@/components/ReportCard'
+import { DateRangePicker, type DateRange } from '@/components/DateRangePicker'
 
 export const Route = createFileRoute('/app/dashboards/$slug')({
   component: DashboardPage,
@@ -15,6 +17,7 @@ function DashboardPage() {
   const dashboard = useDashboard(slug)
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const [range, setRange] = useState<DateRange>({ presetKey: 'all' })
 
   const del = useMutation({
     mutationFn: () => api.deleteDashboard(slug),
@@ -66,14 +69,17 @@ function DashboardPage() {
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{d.description}</p>
           )}
         </div>
-        <Button
-          variant="ghost"
-          onClick={() => {
-            if (confirm(`Delete "${d.name}" and all its reports?`)) del.mutate()
-          }}
-        >
-          <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
-        </Button>
+        <div className="flex items-center gap-2">
+          <DateRangePicker value={range} onChange={setRange} />
+          <Button
+            variant="ghost"
+            onClick={() => {
+              if (confirm(`Delete "${d.name}" and all its reports?`)) del.mutate()
+            }}
+          >
+            <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
+          </Button>
+        </div>
       </header>
 
       {reports.length === 0 ? (
@@ -84,7 +90,11 @@ function DashboardPage() {
       ) : (
         <div className="grid grid-cols-12 gap-4">
           {reports.map((r) => (
-            <ReportCard key={r.id} report={r} />
+            <ReportCard
+              key={r.id}
+              report={r}
+              range={{ from: range.from, to: range.to }}
+            />
           ))}
         </div>
       )}

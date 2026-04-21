@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/steezrcom/steezr-erp/internal/auth"
 	"github.com/steezrcom/steezr-erp/internal/reports"
@@ -115,6 +116,8 @@ func (s *Server) deleteReport(w http.ResponseWriter, r *http.Request) {
 }
 
 // executeReport runs the report's query and returns normalized results.
+// Supports ?from=<rfc3339>&to=<rfc3339> to inject filters on the report's
+// date_filter_field (if set). Reports without date_filter_field ignore the range.
 func (s *Server) executeReport(w http.ResponseWriter, r *http.Request) {
 	m, _ := auth.MembershipFromContext(r.Context())
 	report, err := s.dashboards.GetReport(r.Context(), m.TenantID, r.PathValue("id"))
@@ -127,10 +130,43 @@ func (s *Server) executeReport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "entity "+report.QuerySpec.Entity+" referenced by report no longer exists")
 		return
 	}
-	result, err := s.reportExec.Execute(r.Context(), m.PGSchema, m.TenantID, ent, &report.QuerySpec)
+
+	spec := report.QuerySpec
+	spec.Filters = append([]reports.Filter(nil), spec.Filters...) // copy
+	if spec.DateFilterField != "" {
+		q := r.URL.Query()
+		if from := parseTimeQ(q.Get("from")); from != nil {
+			v, _ := json.Marshal(from.Format(time.RFC3339))
+			spec.Filters = append(spec.Filters, reports.Filter{
+				Field: spec.DateFilterField, Op: reports.OpGte, Value: v,
+			})
+		}
+		if to := parseTimeQ(q.Get("to")); to != nil {
+			v, _ := json.Marshal(to.Format(time.RFC3339))
+			spec.Filters = append(spec.Filters, reports.Filter{
+				Field: spec.DateFilterField, Op: reports.OpLt, Value: v,
+			})
+		}
+	}
+
+	result, err := s.reportExec.Execute(r.Context(), m.PGSchema, m.TenantID, ent, &spec)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"result": result})
+}
+
+// parseTimeQ accepts RFC3339 or YYYY-MM-DD. Returns nil for empty or unparseable input.
+func parseTimeQ(s string) *time.Time {
+	if s == "" {
+		return nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return &t
+	}
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return &t
+	}
+	return nil
 }
