@@ -12,7 +12,13 @@ export const Route = createFileRoute('/app/approvals')({
 
 function ApprovalsPage() {
   const t = useT()
-  const list = useQuery({ queryKey: ['flow-approvals'], queryFn: api.listFlowApprovals })
+  // Poll while the tab is open — approvals are created by background
+  // workers, so the list can change without any action on this page.
+  const list = useQuery({
+    queryKey: ['flow-approvals'],
+    queryFn: api.listFlowApprovals,
+    refetchInterval: 5000,
+  })
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-10">
