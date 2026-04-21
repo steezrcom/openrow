@@ -11,7 +11,9 @@ import {
   Plus,
   Search,
   Settings,
+  ShieldAlert,
   Sparkles,
+  Workflow,
 } from 'lucide-react'
 import { api, type Dashboard, type Entity, type Membership } from '@/lib/api'
 import { useMe } from '@/hooks/useMe'
@@ -104,6 +106,20 @@ function Sidebar({
           active={Boolean(match({ to: '/app/time' }))}
         >
           {t('nav.timesheet')}
+        </NavItem>
+        <NavItem
+          to="/app/flows"
+          icon={<Workflow className="h-4 w-4" />}
+          active={Boolean(match({ to: '/app/flows', fuzzy: true }))}
+        >
+          {t('nav.flows')}
+        </NavItem>
+        <NavItem
+          to="/app/approvals"
+          icon={<ShieldAlert className="h-4 w-4" />}
+          active={Boolean(match({ to: '/app/approvals' }))}
+        >
+          {t('nav.approvals')}
         </NavItem>
         <NavItem
           to="/app/settings/preferences"

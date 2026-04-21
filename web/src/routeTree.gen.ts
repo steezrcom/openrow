@@ -18,10 +18,17 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppTimeRouteImport } from './routes/app.time'
+import { Route as AppFlowsRouteImport } from './routes/app.flows'
+import { Route as AppApprovalsRouteImport } from './routes/app.approvals'
 import { Route as AppSettingsPreferencesRouteImport } from './routes/app.settings.preferences'
 import { Route as AppSettingsLlmRouteImport } from './routes/app.settings.llm'
+import { Route as AppSettingsConnectorsRouteImport } from './routes/app.settings.connectors'
+import { Route as AppFlowsNewRouteImport } from './routes/app.flows.new'
+import { Route as AppFlowsIdRouteImport } from './routes/app.flows.$id'
+import { Route as AppFlow_runsRunIdRouteImport } from './routes/app.flow_runs.$runId'
 import { Route as AppEntitiesNameRouteImport } from './routes/app.entities.$name'
 import { Route as AppDashboardsSlugRouteImport } from './routes/app.dashboards.$slug'
+import { Route as AppFlowsIdRunsRunIdRouteImport } from './routes/app.flows.$id.runs.$runId'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -68,6 +75,16 @@ const AppTimeRoute = AppTimeRouteImport.update({
   path: '/time',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFlowsRoute = AppFlowsRouteImport.update({
+  id: '/flows',
+  path: '/flows',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppApprovalsRoute = AppApprovalsRouteImport.update({
+  id: '/approvals',
+  path: '/approvals',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsPreferencesRoute = AppSettingsPreferencesRouteImport.update({
   id: '/settings/preferences',
   path: '/settings/preferences',
@@ -76,6 +93,26 @@ const AppSettingsPreferencesRoute = AppSettingsPreferencesRouteImport.update({
 const AppSettingsLlmRoute = AppSettingsLlmRouteImport.update({
   id: '/settings/llm',
   path: '/settings/llm',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsConnectorsRoute = AppSettingsConnectorsRouteImport.update({
+  id: '/settings/connectors',
+  path: '/settings/connectors',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFlowsNewRoute = AppFlowsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => AppFlowsRoute,
+} as any)
+const AppFlowsIdRoute = AppFlowsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppFlowsRoute,
+} as any)
+const AppFlow_runsRunIdRoute = AppFlow_runsRunIdRouteImport.update({
+  id: '/flow_runs/$runId',
+  path: '/flow_runs/$runId',
   getParentRoute: () => AppRoute,
 } as any)
 const AppEntitiesNameRoute = AppEntitiesNameRouteImport.update({
@@ -88,6 +125,11 @@ const AppDashboardsSlugRoute = AppDashboardsSlugRouteImport.update({
   path: '/dashboards/$slug',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFlowsIdRunsRunIdRoute = AppFlowsIdRunsRunIdRouteImport.update({
+  id: '/runs/$runId',
+  path: '/runs/$runId',
+  getParentRoute: () => AppFlowsIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -97,12 +139,19 @@ export interface FileRoutesByFullPath {
   '/orgs': typeof OrgsRoute
   '/reset': typeof ResetRoute
   '/signup': typeof SignupRoute
+  '/app/approvals': typeof AppApprovalsRoute
+  '/app/flows': typeof AppFlowsRouteWithChildren
   '/app/time': typeof AppTimeRoute
   '/app/': typeof AppIndexRoute
   '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
+  '/app/flow_runs/$runId': typeof AppFlow_runsRunIdRoute
+  '/app/flows/$id': typeof AppFlowsIdRouteWithChildren
+  '/app/flows/new': typeof AppFlowsNewRoute
+  '/app/settings/connectors': typeof AppSettingsConnectorsRoute
   '/app/settings/llm': typeof AppSettingsLlmRoute
   '/app/settings/preferences': typeof AppSettingsPreferencesRoute
+  '/app/flows/$id/runs/$runId': typeof AppFlowsIdRunsRunIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -111,12 +160,19 @@ export interface FileRoutesByTo {
   '/orgs': typeof OrgsRoute
   '/reset': typeof ResetRoute
   '/signup': typeof SignupRoute
+  '/app/approvals': typeof AppApprovalsRoute
+  '/app/flows': typeof AppFlowsRouteWithChildren
   '/app/time': typeof AppTimeRoute
   '/app': typeof AppIndexRoute
   '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
+  '/app/flow_runs/$runId': typeof AppFlow_runsRunIdRoute
+  '/app/flows/$id': typeof AppFlowsIdRouteWithChildren
+  '/app/flows/new': typeof AppFlowsNewRoute
+  '/app/settings/connectors': typeof AppSettingsConnectorsRoute
   '/app/settings/llm': typeof AppSettingsLlmRoute
   '/app/settings/preferences': typeof AppSettingsPreferencesRoute
+  '/app/flows/$id/runs/$runId': typeof AppFlowsIdRunsRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -127,12 +183,19 @@ export interface FileRoutesById {
   '/orgs': typeof OrgsRoute
   '/reset': typeof ResetRoute
   '/signup': typeof SignupRoute
+  '/app/approvals': typeof AppApprovalsRoute
+  '/app/flows': typeof AppFlowsRouteWithChildren
   '/app/time': typeof AppTimeRoute
   '/app/': typeof AppIndexRoute
   '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
+  '/app/flow_runs/$runId': typeof AppFlow_runsRunIdRoute
+  '/app/flows/$id': typeof AppFlowsIdRouteWithChildren
+  '/app/flows/new': typeof AppFlowsNewRoute
+  '/app/settings/connectors': typeof AppSettingsConnectorsRoute
   '/app/settings/llm': typeof AppSettingsLlmRoute
   '/app/settings/preferences': typeof AppSettingsPreferencesRoute
+  '/app/flows/$id/runs/$runId': typeof AppFlowsIdRunsRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -144,12 +207,19 @@ export interface FileRouteTypes {
     | '/orgs'
     | '/reset'
     | '/signup'
+    | '/app/approvals'
+    | '/app/flows'
     | '/app/time'
     | '/app/'
     | '/app/dashboards/$slug'
     | '/app/entities/$name'
+    | '/app/flow_runs/$runId'
+    | '/app/flows/$id'
+    | '/app/flows/new'
+    | '/app/settings/connectors'
     | '/app/settings/llm'
     | '/app/settings/preferences'
+    | '/app/flows/$id/runs/$runId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -158,12 +228,19 @@ export interface FileRouteTypes {
     | '/orgs'
     | '/reset'
     | '/signup'
+    | '/app/approvals'
+    | '/app/flows'
     | '/app/time'
     | '/app'
     | '/app/dashboards/$slug'
     | '/app/entities/$name'
+    | '/app/flow_runs/$runId'
+    | '/app/flows/$id'
+    | '/app/flows/new'
+    | '/app/settings/connectors'
     | '/app/settings/llm'
     | '/app/settings/preferences'
+    | '/app/flows/$id/runs/$runId'
   id:
     | '__root__'
     | '/'
@@ -173,12 +250,19 @@ export interface FileRouteTypes {
     | '/orgs'
     | '/reset'
     | '/signup'
+    | '/app/approvals'
+    | '/app/flows'
     | '/app/time'
     | '/app/'
     | '/app/dashboards/$slug'
     | '/app/entities/$name'
+    | '/app/flow_runs/$runId'
+    | '/app/flows/$id'
+    | '/app/flows/new'
+    | '/app/settings/connectors'
     | '/app/settings/llm'
     | '/app/settings/preferences'
+    | '/app/flows/$id/runs/$runId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -256,6 +340,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTimeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/flows': {
+      id: '/app/flows'
+      path: '/flows'
+      fullPath: '/app/flows'
+      preLoaderRoute: typeof AppFlowsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/approvals': {
+      id: '/app/approvals'
+      path: '/approvals'
+      fullPath: '/app/approvals'
+      preLoaderRoute: typeof AppApprovalsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/settings/preferences': {
       id: '/app/settings/preferences'
       path: '/settings/preferences'
@@ -268,6 +366,34 @@ declare module '@tanstack/react-router' {
       path: '/settings/llm'
       fullPath: '/app/settings/llm'
       preLoaderRoute: typeof AppSettingsLlmRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/settings/connectors': {
+      id: '/app/settings/connectors'
+      path: '/settings/connectors'
+      fullPath: '/app/settings/connectors'
+      preLoaderRoute: typeof AppSettingsConnectorsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/flows/new': {
+      id: '/app/flows/new'
+      path: '/new'
+      fullPath: '/app/flows/new'
+      preLoaderRoute: typeof AppFlowsNewRouteImport
+      parentRoute: typeof AppFlowsRoute
+    }
+    '/app/flows/$id': {
+      id: '/app/flows/$id'
+      path: '/$id'
+      fullPath: '/app/flows/$id'
+      preLoaderRoute: typeof AppFlowsIdRouteImport
+      parentRoute: typeof AppFlowsRoute
+    }
+    '/app/flow_runs/$runId': {
+      id: '/app/flow_runs/$runId'
+      path: '/flow_runs/$runId'
+      fullPath: '/app/flow_runs/$runId'
+      preLoaderRoute: typeof AppFlow_runsRunIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/entities/$name': {
@@ -284,23 +410,64 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardsSlugRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/flows/$id/runs/$runId': {
+      id: '/app/flows/$id/runs/$runId'
+      path: '/runs/$runId'
+      fullPath: '/app/flows/$id/runs/$runId'
+      preLoaderRoute: typeof AppFlowsIdRunsRunIdRouteImport
+      parentRoute: typeof AppFlowsIdRoute
+    }
   }
 }
 
+interface AppFlowsIdRouteChildren {
+  AppFlowsIdRunsRunIdRoute: typeof AppFlowsIdRunsRunIdRoute
+}
+
+const AppFlowsIdRouteChildren: AppFlowsIdRouteChildren = {
+  AppFlowsIdRunsRunIdRoute: AppFlowsIdRunsRunIdRoute,
+}
+
+const AppFlowsIdRouteWithChildren = AppFlowsIdRoute._addFileChildren(
+  AppFlowsIdRouteChildren,
+)
+
+interface AppFlowsRouteChildren {
+  AppFlowsIdRoute: typeof AppFlowsIdRouteWithChildren
+  AppFlowsNewRoute: typeof AppFlowsNewRoute
+}
+
+const AppFlowsRouteChildren: AppFlowsRouteChildren = {
+  AppFlowsIdRoute: AppFlowsIdRouteWithChildren,
+  AppFlowsNewRoute: AppFlowsNewRoute,
+}
+
+const AppFlowsRouteWithChildren = AppFlowsRoute._addFileChildren(
+  AppFlowsRouteChildren,
+)
+
 interface AppRouteChildren {
+  AppApprovalsRoute: typeof AppApprovalsRoute
+  AppFlowsRoute: typeof AppFlowsRouteWithChildren
   AppTimeRoute: typeof AppTimeRoute
   AppIndexRoute: typeof AppIndexRoute
   AppDashboardsSlugRoute: typeof AppDashboardsSlugRoute
   AppEntitiesNameRoute: typeof AppEntitiesNameRoute
+  AppFlow_runsRunIdRoute: typeof AppFlow_runsRunIdRoute
+  AppSettingsConnectorsRoute: typeof AppSettingsConnectorsRoute
   AppSettingsLlmRoute: typeof AppSettingsLlmRoute
   AppSettingsPreferencesRoute: typeof AppSettingsPreferencesRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppApprovalsRoute: AppApprovalsRoute,
+  AppFlowsRoute: AppFlowsRouteWithChildren,
   AppTimeRoute: AppTimeRoute,
   AppIndexRoute: AppIndexRoute,
   AppDashboardsSlugRoute: AppDashboardsSlugRoute,
   AppEntitiesNameRoute: AppEntitiesNameRoute,
+  AppFlow_runsRunIdRoute: AppFlow_runsRunIdRoute,
+  AppSettingsConnectorsRoute: AppSettingsConnectorsRoute,
   AppSettingsLlmRoute: AppSettingsLlmRoute,
   AppSettingsPreferencesRoute: AppSettingsPreferencesRoute,
 }

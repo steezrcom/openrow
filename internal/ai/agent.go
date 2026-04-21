@@ -105,7 +105,7 @@ func (a *Agent) Run(ctx context.Context, tenantID, pgSchema string, history []Ch
 		return nil, fmt.Errorf("list entities: %w", err)
 	}
 
-	tools := a.buildTools(ctx, tenantID, pgSchema)
+	tools := a.BuildToolset(ctx, tenantID, pgSchema)
 	msgs := buildMessageHistory(history, userMessage, existing)
 
 	var actions []Action
@@ -115,7 +115,7 @@ func (a *Agent) Run(ctx context.Context, tenantID, pgSchema string, history []Ch
 		resp, err := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 			Model:      cfg.Model,
 			Messages:   msgs,
-			Tools:      tools.toolParams(),
+			Tools:      tools.ToolParams(),
 			ToolChoice: "auto",
 			MaxTokens:  2048,
 		})
@@ -136,7 +136,7 @@ func (a *Agent) Run(ctx context.Context, tenantID, pgSchema string, history []Ch
 		msgs = append(msgs, choice.Message)
 
 		for _, tc := range choice.Message.ToolCalls {
-			exec := tools.run(ctx, tc.Function.Name, json.RawMessage(tc.Function.Arguments))
+			exec := tools.Invoke(ctx, tc.Function.Name, json.RawMessage(tc.Function.Arguments))
 			actions = append(actions, Action{
 				Tool:       tc.Function.Name,
 				Input:      json.RawMessage(tc.Function.Arguments),

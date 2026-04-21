@@ -2,10 +2,14 @@ import { Link } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
 
-export function SettingsTabs({ active }: { active: 'preferences' | 'llm' }) {
+type TabID = 'preferences' | 'llm' | 'connectors'
+type TabPath = '/app/settings/preferences' | '/app/settings/llm' | '/app/settings/connectors'
+
+export function SettingsTabs({ active }: { active: TabID }) {
   const t = useT()
-  const tabs: { id: 'preferences' | 'llm'; label: string; to: '/app/settings/preferences' | '/app/settings/llm' }[] = [
+  const tabs: { id: TabID; label: string; to: TabPath }[] = [
     { id: 'preferences', label: t('settings.preferences'), to: '/app/settings/preferences' },
+    { id: 'connectors', label: t('settings.connectors'), to: '/app/settings/connectors' },
     { id: 'llm', label: t('settings.llm'), to: '/app/settings/llm' },
   ]
   return (

@@ -14,7 +14,10 @@ import (
 	"github.com/openrow/openrow/internal/ai"
 	"github.com/openrow/openrow/internal/auth"
 	"github.com/openrow/openrow/internal/config"
+	"github.com/openrow/openrow/internal/connectors"
+	_ "github.com/openrow/openrow/internal/connectors/catalog"
 	"github.com/openrow/openrow/internal/entities"
+	"github.com/openrow/openrow/internal/flows"
 	"github.com/openrow/openrow/internal/httpapi"
 	"github.com/openrow/openrow/internal/llm"
 	"github.com/openrow/openrow/internal/mailer"
@@ -63,6 +66,11 @@ func run(log *slog.Logger) error {
 	dashSvc := reports.NewService(pool)
 	reportExec := reports.NewExecutor(pool, entSvc)
 	llmSvc := llm.NewService(pool, enc, cfg.AnthropicAPIKey)
+	connectorSvc := connectors.NewService(pool, enc)
+	tenantSvc := tenant.NewService(pool)
+	agent := ai.NewAgent(llmSvc, entSvc, dashSvc)
+	flowSvc := flows.NewService(pool)
+	flowRunner := flows.NewRunner(flowSvc, llmSvc, agent, tenantSvc)
 
 	api := httpapi.New(httpapi.Deps{
 		Log:            log,
@@ -70,13 +78,16 @@ func run(log *slog.Logger) error {
 		Sessions:       auth.NewSessionService(pool),
 		Memberships:    auth.NewMembershipService(pool),
 		PasswordResets: auth.NewPasswordResetService(pool),
-		Tenants:        tenant.NewService(pool),
+		Tenants:        tenantSvc,
 		Entities:       entSvc,
 		Dashboards:     dashSvc,
 		ReportExec:     reportExec,
 		Proposer:       ai.NewProposer(llmSvc),
-		Agent:          ai.NewAgent(llmSvc, entSvc, dashSvc),
+		Agent:          agent,
 		LLM:            llmSvc,
+		Connectors:     connectorSvc,
+		Flows:          flowSvc,
+		FlowRunner:     flowRunner,
 		Mailer:         &mailer.Stdout{Log: log},
 		AppURL:         getOr("APP_URL", "http://localhost:5173"),
 		SecureCookies:  strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true"),
