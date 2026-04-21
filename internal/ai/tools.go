@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/steezrcom/steezr-erp/internal/entities"
+	"github.com/steezrcom/steezr-erp/internal/reports"
 )
 
 // tool describes one action the agent can invoke.
@@ -77,6 +78,7 @@ func (ts toolset) run(ctx context.Context, name string, input json.RawMessage) e
 
 func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset {
 	svc := a.entities
+	dash := a.dashboards
 
 	ts := toolset{index: map[string]tool{}}
 	add := func(t tool) {
@@ -308,6 +310,182 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	})
 
 	add(tool{
+		name:        "list_dashboards",
+		description: "List dashboards in the current organization (with report titles).",
+		schema:      anthropic.ToolInputSchemaParam{Properties: map[string]any{}},
+		handler: func(ctx context.Context, _ json.RawMessage) execResult {
+			ds, err := dash.List(ctx, tenantID)
+			if err != nil {
+				return execResult{Err: err}
+			}
+			return execResult{
+				Summary: fmt.Sprintf("Listed %d dashboards", len(ds)),
+				Result:  ds,
+			}
+		},
+	})
+
+	add(tool{
+		name:        "get_dashboard",
+		description: "Get one dashboard with its reports.",
+		schema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{"slug": stringProp("Dashboard slug.")},
+			Required:   []string{"slug"},
+		},
+		handler: func(ctx context.Context, input json.RawMessage) execResult {
+			var req struct{ Slug string `json:"slug"` }
+			if err := json.Unmarshal(input, &req); err != nil {
+				return execResult{Err: err}
+			}
+			d, err := dash.Get(ctx, tenantID, req.Slug)
+			if err != nil {
+				return execResult{Err: err}
+			}
+			return execResult{Summary: fmt.Sprintf("Fetched dashboard %q", d.Slug), Result: d}
+		},
+	})
+
+	add(tool{
+		name:        "create_dashboard",
+		description: "Create a new dashboard. Optionally include an initial list of reports (widgets). Every report has a query_spec; see the system prompt for the schema.",
+		schema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{
+				"name":        stringProp("Human-facing title, e.g. 'Financial overview'."),
+				"slug":        stringProp("Optional machine slug; auto-generated from name if omitted."),
+				"description": stringProp("Optional one-line description."),
+				"reports": map[string]any{
+					"type":        "array",
+					"description": "Initial reports to include on this dashboard.",
+					"items": map[string]any{
+						"type":       "object",
+						"properties": reportSchemaProperties(),
+						"required":   []string{"title", "widget_type", "query_spec"},
+					},
+				},
+			},
+			Required: []string{"name"},
+		},
+		handler: func(ctx context.Context, input json.RawMessage) execResult {
+			var in reports.CreateDashboardInput
+			if err := json.Unmarshal(input, &in); err != nil {
+				return execResult{Err: err}
+			}
+			d, err := dash.Create(ctx, tenantID, in)
+			if err != nil {
+				return execResult{Err: err}
+			}
+			return execResult{
+				Summary: fmt.Sprintf("Created dashboard %q with %d reports", d.Slug, len(d.Reports)),
+				Result:  d,
+			}
+		},
+	})
+
+	add(tool{
+		name:        "add_report",
+		description: "Add a report to an existing dashboard.",
+		schema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{
+				"slug":   stringProp("Dashboard slug."),
+				"report": map[string]any{
+					"type":       "object",
+					"properties": reportSchemaProperties(),
+					"required":   []string{"title", "widget_type", "query_spec"},
+				},
+			},
+			Required: []string{"slug", "report"},
+		},
+		handler: func(ctx context.Context, input json.RawMessage) execResult {
+			var req struct {
+				Slug   string                     `json:"slug"`
+				Report reports.CreateReportInput  `json:"report"`
+			}
+			if err := json.Unmarshal(input, &req); err != nil {
+				return execResult{Err: err}
+			}
+			r, err := dash.AddReport(ctx, tenantID, req.Slug, req.Report)
+			if err != nil {
+				return execResult{Err: err}
+			}
+			return execResult{Summary: fmt.Sprintf("Added report %q to %q", r.Title, req.Slug), Result: r}
+		},
+	})
+
+	add(tool{
+		name:        "update_report",
+		description: "Edit an existing report's title, subtitle, widget type, query spec, or width.",
+		schema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{
+				"id":          stringProp("Report id."),
+				"title":       stringProp("New title."),
+				"subtitle":    stringProp("New subtitle."),
+				"widget_type": stringProp("kpi | bar | line | pie | table."),
+				"width":       map[string]any{"type": "integer", "description": "New width (1-12)."},
+				"query_spec":  map[string]any{"type": "object", "description": "Replacement query_spec."},
+			},
+			Required: []string{"id"},
+		},
+		handler: func(ctx context.Context, input json.RawMessage) execResult {
+			var req struct {
+				ID         string             `json:"id"`
+				Title      *string            `json:"title,omitempty"`
+				Subtitle   *string            `json:"subtitle,omitempty"`
+				WidgetType *reports.WidgetType `json:"widget_type,omitempty"`
+				QuerySpec  *reports.QuerySpec `json:"query_spec,omitempty"`
+				Width      *int               `json:"width,omitempty"`
+			}
+			if err := json.Unmarshal(input, &req); err != nil {
+				return execResult{Err: err}
+			}
+			if err := dash.UpdateReport(ctx, tenantID, req.ID, reports.UpdateReportInput{
+				Title: req.Title, Subtitle: req.Subtitle,
+				WidgetType: req.WidgetType, QuerySpec: req.QuerySpec, Width: req.Width,
+			}); err != nil {
+				return execResult{Err: err}
+			}
+			return execResult{Summary: "Updated report", Result: map[string]string{"id": req.ID}}
+		},
+	})
+
+	add(tool{
+		name:        "delete_report",
+		description: "Delete a report by id.",
+		schema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{"id": stringProp("Report id.")},
+			Required:   []string{"id"},
+		},
+		handler: func(ctx context.Context, input json.RawMessage) execResult {
+			var req struct{ ID string `json:"id"` }
+			if err := json.Unmarshal(input, &req); err != nil {
+				return execResult{Err: err}
+			}
+			if err := dash.DeleteReport(ctx, tenantID, req.ID); err != nil {
+				return execResult{Err: err}
+			}
+			return execResult{Summary: "Deleted report"}
+		},
+	})
+
+	add(tool{
+		name:        "delete_dashboard",
+		description: "Delete a dashboard and all its reports. Destructive; confirm with the user first.",
+		schema: anthropic.ToolInputSchemaParam{
+			Properties: map[string]any{"slug": stringProp("Dashboard slug.")},
+			Required:   []string{"slug"},
+		},
+		handler: func(ctx context.Context, input json.RawMessage) execResult {
+			var req struct{ Slug string `json:"slug"` }
+			if err := json.Unmarshal(input, &req); err != nil {
+				return execResult{Err: err}
+			}
+			if err := dash.Delete(ctx, tenantID, req.Slug); err != nil {
+				return execResult{Err: err}
+			}
+			return execResult{Summary: fmt.Sprintf("Deleted dashboard %q", req.Slug)}
+		},
+	})
+
+	add(tool{
 		name:        "query_rows",
 		description: "Return recent rows from an entity. Use this to answer questions about current data or verify state before mutating.",
 		schema: anthropic.ToolInputSchemaParam{
@@ -368,6 +546,84 @@ func entitySchemaProperties() map[string]any {
 				"required":   []string{"name", "display_name", "data_type"},
 			},
 		},
+	}
+}
+
+func reportSchemaProperties() map[string]any {
+	return map[string]any{
+		"title":    stringProp("Report title, e.g. 'Revenue this month'."),
+		"subtitle": stringProp("Optional secondary label."),
+		"widget_type": map[string]any{
+			"type": "string",
+			"enum": []string{"kpi", "bar", "line", "pie", "table"},
+		},
+		"width": map[string]any{
+			"type":        "integer",
+			"description": "Grid columns (1-12). Omit to default to 6.",
+		},
+		"query_spec": map[string]any{
+			"type":       "object",
+			"properties": querySpecProperties(),
+			"required":   []string{"entity"},
+		},
+	}
+}
+
+func querySpecProperties() map[string]any {
+	return map[string]any{
+		"entity": stringProp("Entity (table) to query."),
+		"filters": map[string]any{
+			"type":        "array",
+			"description": "WHERE clauses combined with AND.",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"field": stringProp("Column name."),
+					"op": map[string]any{
+						"type": "string",
+						"enum": []string{
+							"eq", "ne", "gt", "gte", "lt", "lte",
+							"contains", "in", "is_null", "is_not_null",
+						},
+					},
+					"value": map[string]any{
+						"description": "Scalar or array (for in).",
+					},
+				},
+				"required": []string{"field", "op"},
+			},
+		},
+		"group_by": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"field":  stringProp("Field to group by."),
+				"bucket": map[string]any{
+					"type": "string",
+					"enum": []string{"", "day", "week", "month", "quarter", "year"},
+				},
+			},
+			"required": []string{"field"},
+		},
+		"aggregate": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"fn": map[string]any{
+					"type": "string",
+					"enum": []string{"count", "sum", "avg", "min", "max"},
+				},
+				"field": stringProp("Required for sum/avg/min/max. For count, use empty string for count(*)."),
+			},
+			"required": []string{"fn"},
+		},
+		"sort": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"field": stringProp("Field name, or 'label'/'value' for aggregated queries."),
+				"dir":   map[string]any{"type": "string", "enum": []string{"asc", "desc"}},
+			},
+			"required": []string{"field", "dir"},
+		},
+		"limit": map[string]any{"type": "integer", "description": "Max rows; default 500 for series, 100 for tables."},
 	}
 }
 

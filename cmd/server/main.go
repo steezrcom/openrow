@@ -17,6 +17,7 @@ import (
 	"github.com/steezrcom/steezr-erp/internal/entities"
 	"github.com/steezrcom/steezr-erp/internal/httpapi"
 	"github.com/steezrcom/steezr-erp/internal/mailer"
+	"github.com/steezrcom/steezr-erp/internal/reports"
 	"github.com/steezrcom/steezr-erp/internal/store"
 	"github.com/steezrcom/steezr-erp/internal/tenant"
 )
@@ -52,6 +53,8 @@ func run(log *slog.Logger) error {
 	log.Info("migrations applied")
 
 	entSvc := entities.NewService(pool)
+	dashSvc := reports.NewService(pool)
+	reportExec := reports.NewExecutor(pool)
 
 	api := httpapi.New(httpapi.Deps{
 		Log:            log,
@@ -61,8 +64,10 @@ func run(log *slog.Logger) error {
 		PasswordResets: auth.NewPasswordResetService(pool),
 		Tenants:        tenant.NewService(pool),
 		Entities:       entSvc,
+		Dashboards:     dashSvc,
+		ReportExec:     reportExec,
 		Proposer:       ai.NewProposer(cfg.AnthropicAPIKey),
-		Agent:          ai.NewAgent(cfg.AnthropicAPIKey, entSvc),
+		Agent:          ai.NewAgent(cfg.AnthropicAPIKey, entSvc, dashSvc),
 		Mailer:         &mailer.Stdout{Log: log},
 		AppURL:         getOr("APP_URL", "http://localhost:5173"),
 		SecureCookies:  strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true"),

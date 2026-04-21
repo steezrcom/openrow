@@ -10,6 +10,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 
 	"github.com/steezrcom/steezr-erp/internal/entities"
+	"github.com/steezrcom/steezr-erp/internal/reports"
 )
 
 const agentSystemPrompt = `You are the assistant inside steezr, an AI-native ERP.
@@ -23,10 +24,20 @@ Data modeling rules:
 - For reference fields, set reference_entity to the target's name. Only reference entities that currently exist.
 - Don't invent fields the user didn't imply. If they say "a customer with name and email", use exactly those two fields.
 
+Dashboards and reports:
+- A dashboard is a named page; it contains one or more reports (widgets).
+- A report has a widget_type (kpi | bar | line | pie | table) and a query_spec.
+- query_spec shape: { entity, filters?, group_by?, aggregate?, sort?, limit? }.
+- kpi: aggregate required, no group_by. bar/line/pie: aggregate + group_by both required. table: neither.
+- For time-series reports, set group_by.bucket to "day" | "week" | "month" | "quarter" | "year" and the field must be a date/timestamp column.
+- Aggregate fns: count | sum | avg | min | max. sum/avg need numeric fields.
+- Before creating a dashboard that references an entity that doesn't exist yet, either create the entity first or tell the user you'll need them to confirm adding it.
+- Prefer 2-4 reports per dashboard, widths chosen from 3/4/6/8/12 in a 12-column grid.
+
 Mutations:
 - Only mutate what the user asked for. If the user asks to add an entity, don't also add sample rows unless they said so.
 - Before add_row/update_row, if you're unsure which entity, call list_entities.
-- Treat destructive operations (delete_row, delete_entity) carefully; confirm if the target is ambiguous.
+- Treat destructive operations (delete_row, delete_dashboard, drop_field) carefully; confirm if the target is ambiguous.
 
 Style: terse, concrete. Use the user's language.`
 
@@ -48,19 +59,21 @@ type Action struct {
 
 // Agent wraps the Claude tool loop with the fixed set of ERP tools.
 type Agent struct {
-	client   anthropic.Client
-	model    anthropic.Model
-	entities *entities.Service
+	client     anthropic.Client
+	model      anthropic.Model
+	entities   *entities.Service
+	dashboards *reports.Service
 }
 
-func NewAgent(apiKey string, ent *entities.Service) *Agent {
+func NewAgent(apiKey string, ent *entities.Service, dash *reports.Service) *Agent {
 	if apiKey == "" {
 		return nil
 	}
 	return &Agent{
-		client:   anthropic.NewClient(option.WithAPIKey(apiKey)),
-		model:    anthropic.ModelClaudeSonnet4_6,
-		entities: ent,
+		client:     anthropic.NewClient(option.WithAPIKey(apiKey)),
+		model:      anthropic.ModelClaudeSonnet4_6,
+		entities:   ent,
+		dashboards: dash,
 	}
 }
 

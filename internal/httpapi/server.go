@@ -8,6 +8,7 @@ import (
 	"github.com/steezrcom/steezr-erp/internal/auth"
 	"github.com/steezrcom/steezr-erp/internal/entities"
 	"github.com/steezrcom/steezr-erp/internal/mailer"
+	"github.com/steezrcom/steezr-erp/internal/reports"
 	"github.com/steezrcom/steezr-erp/internal/spa"
 	"github.com/steezrcom/steezr-erp/internal/tenant"
 )
@@ -20,6 +21,8 @@ type Server struct {
 	passwordResets *auth.PasswordResetService
 	tenants        *tenant.Service
 	entities       *entities.Service
+	dashboards     *reports.Service
+	reportExec     *reports.Executor
 	proposer       *ai.Proposer
 	agent          *ai.Agent
 	mail           mailer.Mailer
@@ -36,6 +39,8 @@ type Deps struct {
 	PasswordResets *auth.PasswordResetService
 	Tenants        *tenant.Service
 	Entities       *entities.Service
+	Dashboards     *reports.Service
+	ReportExec     *reports.Executor
 	Proposer       *ai.Proposer
 	Agent          *ai.Agent
 	Mailer         mailer.Mailer
@@ -61,6 +66,8 @@ func New(d Deps) *Server {
 		passwordResets: d.PasswordResets,
 		tenants:        d.Tenants,
 		entities:       d.Entities,
+		dashboards:     d.Dashboards,
+		reportExec:     d.ReportExec,
 		proposer:       d.Proposer,
 		agent:          d.Agent,
 		mail:           d.Mailer,
@@ -101,6 +108,15 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("POST /api/v1/entities/{name}/fields", auth.RequireMembership(http.HandlerFunc(s.addField)))
 	authed.Handle("DELETE /api/v1/entities/{name}/fields/{field}", auth.RequireMembership(http.HandlerFunc(s.dropField)))
 	authed.Handle("POST /api/v1/chat/messages", auth.RequireMembership(http.HandlerFunc(s.chat)))
+
+	authed.Handle("GET /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.listDashboards)))
+	authed.Handle("POST /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.createDashboard)))
+	authed.Handle("GET /api/v1/dashboards/{slug}", auth.RequireMembership(http.HandlerFunc(s.getDashboard)))
+	authed.Handle("DELETE /api/v1/dashboards/{slug}", auth.RequireMembership(http.HandlerFunc(s.deleteDashboard)))
+	authed.Handle("POST /api/v1/dashboards/{slug}/reports", auth.RequireMembership(http.HandlerFunc(s.addReport)))
+	authed.Handle("PATCH /api/v1/reports/{id}", auth.RequireMembership(http.HandlerFunc(s.patchReport)))
+	authed.Handle("DELETE /api/v1/reports/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteReport)))
+	authed.Handle("POST /api/v1/reports/{id}/execute", auth.RequireMembership(http.HandlerFunc(s.executeReport)))
 
 	mux.Handle("/api/v1/", auth.RequireAuth(authed))
 
