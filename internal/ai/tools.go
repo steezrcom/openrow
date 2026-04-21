@@ -582,8 +582,10 @@ func (a *Agent) BuildToolset(ctx context.Context, tenantID, pgSchema string) *To
 
 // addConnectorTools appends one tool per Action on each installed + enabled
 // connector the tenant has configured. Tools are named
-// "connector.<id>.<action_id>" so allowlists can target them precisely.
-// Connectors that aren't StatusAvailable are skipped.
+// "connector_<id>_<action_id>" so allowlists can target them precisely
+// (dots aren't allowed in OpenAI/Anthropic tool-name regexes, so we use
+// underscores throughout). Connectors that aren't StatusAvailable are
+// skipped.
 func (a *Agent) addConnectorTools(ctx context.Context, tenantID string, add func(Tool)) {
 	if a.connectors == nil {
 		return
@@ -603,7 +605,7 @@ func (a *Agent) addConnectorTools(ctx context.Context, tenantID string, add func
 		}
 		for _, actionLoop := range descriptor.Actions {
 			action := actionLoop
-			toolName := "connector." + cfg.ConnectorID + "." + action.ID
+			toolName := "connector_" + cfg.ConnectorID + "_" + action.ID
 			add(Tool{
 				Name:        toolName,
 				Description: action.Description,
