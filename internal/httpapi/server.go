@@ -123,6 +123,7 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("DELETE /api/v1/llm/config", auth.RequireMembership(http.HandlerFunc(s.deleteLLMConfig)))
 	authed.Handle("POST /api/v1/llm/models/list", auth.RequireAuth(http.HandlerFunc(s.listLLMModels)))
 	authed.Handle("POST /api/v1/llm/test", auth.RequireAuth(http.HandlerFunc(s.testLLM)))
+	authed.Handle("POST /api/v1/llm/self-test", auth.RequireMembership(http.HandlerFunc(s.selfTestLLM)))
 
 	authed.Handle("GET /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.listDashboards)))
 	authed.Handle("POST /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.createDashboard)))

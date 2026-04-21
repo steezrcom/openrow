@@ -98,3 +98,16 @@ func (s *Server) testLLM(w http.ResponseWriter, r *http.Request) {
 	result := llm.Test(r.Context(), in.BaseURL, in.APIKey, in.Model)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"result": result})
 }
+
+// selfTestLLM runs the same probe against the tenant's saved config and
+// persists the outcome on the row. Used when the settings form isn't dirty
+// and the user just wants to verify the saved config still works.
+func (s *Server) selfTestLLM(w http.ResponseWriter, r *http.Request) {
+	m, _ := auth.MembershipFromContext(r.Context())
+	result, err := s.llm.SelfTest(r.Context(), m.TenantID)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"result": result})
+}

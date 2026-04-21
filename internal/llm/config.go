@@ -25,6 +25,12 @@ type Config struct {
 	Source    string    `json:"source"` // "tenant" | "env-fallback"
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
+
+	// Last self-test outcome (nil when never tested).
+	LastTestedAt    *time.Time
+	LastTestOK      *bool
+	LastTestToolsOK *bool
+	LastTestMessage string
 }
 
 // Safe returns a copy with the api key redacted for serialization to clients.
@@ -32,24 +38,31 @@ func (c *Config) Safe() SafeConfig {
 	if c == nil {
 		return SafeConfig{}
 	}
-	has := c.APIKey != ""
 	return SafeConfig{
-		Provider:    c.Provider,
-		BaseURL:     c.BaseURL,
-		Model:       c.Model,
-		HasAPIKey:   has,
-		Source:      c.Source,
-		UpdatedAt:   c.UpdatedAt,
+		Provider:        c.Provider,
+		BaseURL:         c.BaseURL,
+		Model:           c.Model,
+		HasAPIKey:       c.APIKey != "",
+		Source:          c.Source,
+		UpdatedAt:       c.UpdatedAt,
+		LastTestedAt:    c.LastTestedAt,
+		LastTestOK:      c.LastTestOK,
+		LastTestToolsOK: c.LastTestToolsOK,
+		LastTestMessage: c.LastTestMessage,
 	}
 }
 
 type SafeConfig struct {
-	Provider  string    `json:"provider"`
-	BaseURL   string    `json:"base_url"`
-	Model     string    `json:"model"`
-	HasAPIKey bool      `json:"has_api_key"`
-	Source    string    `json:"source"`
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	Provider        string     `json:"provider"`
+	BaseURL         string     `json:"base_url"`
+	Model           string     `json:"model"`
+	HasAPIKey       bool       `json:"has_api_key"`
+	Source          string     `json:"source"`
+	UpdatedAt       time.Time  `json:"updated_at,omitempty"`
+	LastTestedAt    *time.Time `json:"last_tested_at,omitempty"`
+	LastTestOK      *bool      `json:"last_test_ok,omitempty"`
+	LastTestToolsOK *bool      `json:"last_test_tools_ok,omitempty"`
+	LastTestMessage string     `json:"last_test_message,omitempty"`
 }
 
 // SetInput is the patch from HTTP/agent.
@@ -121,19 +134,33 @@ func (s *Service) GetSafe(ctx context.Context, tenantID string) (*SafeConfig, er
 
 func (s *Service) get(ctx context.Context, tenantID string) (*Config, error) {
 	var (
-		c   Config
-		key []byte
+		c         Config
+		key       []byte
+		testedAt  *time.Time
+		testOK    *bool
+		testTools *bool
+		testMsg   *string
 	)
 	err := s.pool.QueryRow(ctx, `
-		SELECT tenant_id, provider, base_url, COALESCE(api_key, ''::bytea), model, created_at, updated_at
+		SELECT tenant_id, provider, base_url, COALESCE(api_key, ''::bytea), model,
+		       created_at, updated_at,
+		       last_tested_at, last_test_ok, last_test_tools_ok, last_test_message
 		FROM openrow.llm_configs
 		WHERE tenant_id = $1`,
 		tenantID,
-	).Scan(&c.TenantID, &c.Provider, &c.BaseURL, &key, &c.Model, &c.CreatedAt, &c.UpdatedAt)
+	).Scan(&c.TenantID, &c.Provider, &c.BaseURL, &key, &c.Model,
+		&c.CreatedAt, &c.UpdatedAt,
+		&testedAt, &testOK, &testTools, &testMsg)
 	if err != nil {
 		return nil, err
 	}
 	c.Source = "tenant"
+	c.LastTestedAt = testedAt
+	c.LastTestOK = testOK
+	c.LastTestToolsOK = testTools
+	if testMsg != nil {
+		c.LastTestMessage = *testMsg
+	}
 	if len(key) > 0 {
 		pt, err := s.enc.Decrypt(key)
 		if err != nil {
@@ -142,6 +169,38 @@ func (s *Service) get(ctx context.Context, tenantID string) (*Config, error) {
 		c.APIKey = string(pt)
 	}
 	return &c, nil
+}
+
+// RecordTestResult saves the outcome of a self-test against the tenant's config.
+// No-op if the tenant has no persisted row.
+func (s *Service) RecordTestResult(ctx context.Context, tenantID string, r TestResult) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE openrow.llm_configs
+		SET last_tested_at = now(),
+		    last_test_ok = $2,
+		    last_test_tools_ok = $3,
+		    last_test_message = NULLIF($4, '')
+		WHERE tenant_id = $1`,
+		tenantID, r.OK, r.ToolsOK, r.Message)
+	return err
+}
+
+// SelfTest runs Test() against the tenant's saved config and records the result.
+// Returns ErrNotConfigured if the tenant has no saved config (env-fallback is
+// deliberately excluded — there's nothing to save the result onto).
+func (s *Service) SelfTest(ctx context.Context, tenantID string) (*TestResult, error) {
+	cfg, err := s.get(ctx, tenantID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotConfigured
+	}
+	if err != nil {
+		return nil, err
+	}
+	result := Test(ctx, cfg.BaseURL, cfg.APIKey, cfg.Model)
+	if recErr := s.RecordTestResult(ctx, tenantID, result); recErr != nil {
+		return &result, fmt.Errorf("test ran but recording failed: %w", recErr)
+	}
+	return &result, nil
 }
 
 // Set upserts the tenant's config. If in.APIKey is nil, the key is left

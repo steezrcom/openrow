@@ -130,6 +130,10 @@ export interface LLMConfigSafe {
   has_api_key?: boolean
   source?: 'tenant' | 'env-fallback' | ''
   updated_at?: string
+  last_tested_at?: string | null
+  last_test_ok?: boolean | null
+  last_test_tools_ok?: boolean | null
+  last_test_message?: string
 }
 
 export interface LLMTestResult {
@@ -374,6 +378,11 @@ export const api = {
     request<{ result: LLMTestResult }>('/api/v1/llm/test', {
       method: 'POST',
       body: JSON.stringify(body),
+    }).then((r) => r.result),
+
+  llmSelfTest: () =>
+    request<{ result: LLMTestResult }>('/api/v1/llm/self-test', {
+      method: 'POST',
     }).then((r) => r.result),
 
   reorderReports: (slug: string, reportIDs: string[]) =>

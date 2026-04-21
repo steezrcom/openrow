@@ -90,18 +90,34 @@ function LLMSettingsPage() {
 
   const [testResult, setTestResult] = useState<LLMTestResult | null>(null)
   const [testError, setTestError] = useState<string | null>(null)
+
+  // "Clean" means the user is looking at the saved config without edits: they
+  // haven't typed a new api_key, and the URL/model match what's persisted.
+  // In that case the test button should probe the actual saved config (which
+  // also records the outcome for the status banner).
+  const formIsClean = (() => {
+    const saved = config.data
+    if (!saved || saved.source !== 'tenant') return false
+    if (apiKey.length > 0) return false
+    if ((saved.base_url ?? '') !== baseURL) return false
+    if ((saved.model ?? '') !== model) return false
+    if ((saved.provider ?? '') !== providerID) return false
+    return true
+  })()
+
   const test = useMutation({
-    mutationFn: () =>
-      api.llmTest({
-        base_url: baseURL,
-        api_key: apiKey,
-        model,
-      }),
+    mutationFn: async () => {
+      if (formIsClean) return api.llmSelfTest()
+      return api.llmTest({ base_url: baseURL, api_key: apiKey, model })
+    },
     onMutate: () => {
       setTestResult(null)
       setTestError(null)
     },
-    onSuccess: (r) => setTestResult(r),
+    onSuccess: async (r) => {
+      setTestResult(r)
+      if (formIsClean) await qc.invalidateQueries({ queryKey: ['llm-config'] })
+    },
     onError: (err) => setTestError(err instanceof ApiError ? err.message : 'failed'),
   })
 
@@ -159,6 +175,10 @@ function LLMSettingsPage() {
           This workspace is currently using the fallback <code>ANTHROPIC_API_KEY</code> from
           the server environment. Save a config below to use your own provider and key.
         </Card>
+      )}
+
+      {hasPersistedConfig && config.data?.last_tested_at && (
+        <StatusBanner config={config.data} />
       )}
 
       <form
@@ -282,7 +302,11 @@ function LLMSettingsPage() {
               onClick={() => test.mutate()}
               disabled={!baseURL || !model || test.isPending}
             >
-              {test.isPending ? 'Testing…' : 'Test connection'}
+              {test.isPending
+                ? 'Testing…'
+                : formIsClean
+                ? 'Test saved config'
+                : 'Test these values'}
             </Button>
             {testResult && <TestBadge result={testResult} />}
           </div>
@@ -290,6 +314,12 @@ function LLMSettingsPage() {
             <p className="text-xs text-muted-foreground">{testResult.message}</p>
           )}
           {testError && <p className="text-xs text-destructive">{testError}</p>}
+          {formIsClean && (
+            <p className="text-[11px] text-muted-foreground">
+              Tests against the saved API key on the server. The result is recorded and
+              shown above.
+            </p>
+          )}
         </Section>
 
         <div className="flex items-center justify-between border-t border-border pt-5">
@@ -374,6 +404,44 @@ function Field({
       {children}
     </div>
   )
+}
+
+function StatusBanner({ config }: { config: { last_tested_at?: string | null; last_test_ok?: boolean | null; last_test_tools_ok?: boolean | null; last_test_message?: string } }) {
+  const ok = config.last_test_ok === true
+  const tools = config.last_test_tools_ok === true
+  const tested = config.last_tested_at ? new Date(config.last_tested_at) : null
+  const rel = tested ? relativeTime(tested) : ''
+  return (
+    <Card
+      className={cn(
+        'mb-6 flex items-start gap-3 p-4 text-sm',
+        ok ? 'border-primary/30 bg-primary/5' : 'border-destructive/30 bg-destructive/5'
+      )}
+    >
+      {ok ? (
+        <Check className="mt-0.5 h-4 w-4 text-primary" />
+      ) : (
+        <X className="mt-0.5 h-4 w-4 text-destructive" />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="font-medium">
+          {ok ? (tools ? 'Config OK' : 'Chat OK, tool calls unreliable') : 'Config is failing'}
+        </div>
+        <div className="mt-0.5 text-xs text-muted-foreground">
+          Last checked {rel || tested?.toISOString().slice(0, 16).replace('T', ' ')}
+          {config.last_test_message ? ' · ' + config.last_test_message : ''}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function relativeTime(d: Date): string {
+  const diffSec = Math.round((Date.now() - d.getTime()) / 1000)
+  if (diffSec < 45) return 'just now'
+  if (diffSec < 60 * 60) return `${Math.round(diffSec / 60)} min ago`
+  if (diffSec < 60 * 60 * 24) return `${Math.round(diffSec / 3600)} h ago`
+  return `${Math.round(diffSec / 86400)} d ago`
 }
 
 function TestBadge({ result }: { result: LLMTestResult }) {
