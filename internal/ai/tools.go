@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/jackc/pgx/v5"
+	"github.com/sashabaranov/go-openai"
 
 	"github.com/openrow/openrow/internal/entities"
 	"github.com/openrow/openrow/internal/reports"
@@ -18,7 +18,7 @@ import (
 type tool struct {
 	name        string
 	description string
-	schema      anthropic.ToolInputSchemaParam
+	schema      map[string]any // full JSON Schema "object" — {type, properties, required}
 	handler     func(ctx context.Context, input json.RawMessage) execResult
 }
 
@@ -50,21 +50,23 @@ func (e execResult) ResultText() string {
 	return string(b)
 }
 
-// toolset bundles the tools for one request (closed over tenantID/pgSchema).
+// toolset bundles tools for one request (closed over tenantID/pgSchema).
 type toolset struct {
 	tools []tool
 	index map[string]tool
 }
 
-func (ts toolset) toolParams() []anthropic.ToolUnionParam {
-	out := make([]anthropic.ToolUnionParam, len(ts.tools))
+func (ts toolset) toolParams() []openai.Tool {
+	out := make([]openai.Tool, len(ts.tools))
 	for i, t := range ts.tools {
-		p := anthropic.ToolParam{
-			Name:        t.name,
-			Description: anthropic.String(t.description),
-			InputSchema: t.schema,
+		out[i] = openai.Tool{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name:        t.name,
+				Description: t.description,
+				Parameters:  t.schema,
+			},
 		}
-		out[i] = anthropic.ToolUnionParam{OfTool: &p}
 	}
 	return out
 }
@@ -75,6 +77,19 @@ func (ts toolset) run(ctx context.Context, name string, input json.RawMessage) e
 		return execResult{Err: fmt.Errorf("unknown tool %q", name)}
 	}
 	return t.handler(ctx, input)
+}
+
+// objectSchema wraps a properties map into a JSON Schema object with an
+// optional required list. Keeps tool definitions readable.
+func objectSchema(properties map[string]any, required ...string) map[string]any {
+	out := map[string]any{
+		"type":       "object",
+		"properties": properties,
+	}
+	if len(required) > 0 {
+		out["required"] = required
+	}
+	return out
 }
 
 func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset {
@@ -90,9 +105,7 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "list_entities",
 		description: "Return all entities in the current organization with their fields. Call this whenever you're unsure which entities exist or need to verify a name.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{},
-		},
+		schema:      objectSchema(map[string]any{}),
 		handler: func(ctx context.Context, _ json.RawMessage) execResult {
 			es, err := svc.List(ctx, tenantID)
 			if err != nil {
@@ -113,10 +126,7 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "create_entity",
 		description: "Create a new entity (database table). Validates field names; id/created_at/updated_at are added automatically.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: entitySchemaProperties(),
-			Required:   []string{"name", "display_name", "fields"},
-		},
+		schema:      objectSchema(entitySchemaProperties(), "name", "display_name", "fields"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
 			var spec entities.EntitySpec
 			if err := json.Unmarshal(input, &spec); err != nil {
@@ -137,17 +147,14 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "add_row",
 		description: "Insert a new row into an entity's table. values is a string→string map; the server coerces by field type.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"entity": stringProp("Entity name (lowercase identifier)."),
-				"values": map[string]any{
-					"type":                 "object",
-					"description":          "Field name to value, as strings. For boolean, use \"true\"/\"false\".",
-					"additionalProperties": map[string]any{"type": "string"},
-				},
+		schema: objectSchema(map[string]any{
+			"entity": stringProp("Entity name (lowercase identifier)."),
+			"values": map[string]any{
+				"type":                 "object",
+				"description":          "Field name to value, as strings. For boolean, use \"true\"/\"false\".",
+				"additionalProperties": map[string]any{"type": "string"},
 			},
-			Required: []string{"entity", "values"},
-		},
+		}, "entity", "values"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
 			var req struct {
 				Entity string            `json:"entity"`
@@ -175,17 +182,14 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "update_row",
 		description: "Update an existing row. Only include the fields you want to change. To clear a non-required field, pass an empty string.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"entity": stringProp("Entity name."),
-				"id":     stringProp("Row UUID."),
-				"values": map[string]any{
-					"type":                 "object",
-					"additionalProperties": map[string]any{"type": "string"},
-				},
+		schema: objectSchema(map[string]any{
+			"entity": stringProp("Entity name."),
+			"id":     stringProp("Row UUID."),
+			"values": map[string]any{
+				"type":                 "object",
+				"additionalProperties": map[string]any{"type": "string"},
 			},
-			Required: []string{"entity", "id", "values"},
-		},
+		}, "entity", "id", "values"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
 			var req struct {
 				Entity string            `json:"entity"`
@@ -216,13 +220,10 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "delete_row",
 		description: "Delete a row by id.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"entity": stringProp("Entity name."),
-				"id":     stringProp("Row UUID."),
-			},
-			Required: []string{"entity", "id"},
-		},
+		schema: objectSchema(map[string]any{
+			"entity": stringProp("Entity name."),
+			"id":     stringProp("Row UUID."),
+		}, "entity", "id"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
 			var req struct {
 				Entity string `json:"entity"`
@@ -251,21 +252,14 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "add_field",
 		description: "Add a new column to an existing entity. Use when the user asks to extend a table with a new attribute.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"entity": stringProp("Target entity name."),
-				"field": map[string]any{
-					"type":       "object",
-					"properties": fieldSchemaProperties(),
-					"required":   []string{"name", "display_name", "data_type"},
-				},
-			},
-			Required: []string{"entity", "field"},
-		},
+		schema: objectSchema(map[string]any{
+			"entity": stringProp("Target entity name."),
+			"field":  objectSchema(fieldSchemaProperties(), "name", "display_name", "data_type"),
+		}, "entity", "field"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
 			var req struct {
-				Entity string               `json:"entity"`
-				Field  entities.FieldSpec   `json:"field"`
+				Entity string             `json:"entity"`
+				Field  entities.FieldSpec `json:"field"`
 			}
 			if err := json.Unmarshal(input, &req); err != nil {
 				return execResult{Err: err}
@@ -285,13 +279,10 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "drop_field",
 		description: "Remove a column from an entity. Data in that column is lost. Only call after confirming with the user or when explicitly requested.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"entity": stringProp("Entity name."),
-				"field":  stringProp("Field name to drop."),
-			},
-			Required: []string{"entity", "field"},
-		},
+		schema: objectSchema(map[string]any{
+			"entity": stringProp("Entity name."),
+			"field":  stringProp("Field name to drop."),
+		}, "entity", "field"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
 			var req struct {
 				Entity string `json:"entity"`
@@ -313,7 +304,7 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "list_templates",
 		description: "List pre-built workspace templates (entities + starter dashboards).",
-		schema:      anthropic.ToolInputSchemaParam{Properties: map[string]any{}},
+		schema:      objectSchema(map[string]any{}),
 		handler: func(_ context.Context, _ json.RawMessage) execResult {
 			ts := templates.All()
 			out := make([]map[string]string, len(ts))
@@ -327,14 +318,10 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name: "apply_template",
 		description: "Install a pre-built template (entities + default dashboard) in the current workspace. " +
-			"Fails if any template entity name conflicts with an existing entity, so prefer fresh workspaces. " +
-			"Use when the user says 'set up an agency workspace' or asks for a starting point.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"id": stringProp("Template id; currently 'agency' is the supported value."),
-			},
-			Required: []string{"id"},
-		},
+			"Fails if any template entity name conflicts with an existing entity, so prefer fresh workspaces.",
+		schema: objectSchema(map[string]any{
+			"id": stringProp("Template id; currently 'agency' is the supported value."),
+		}, "id"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
 			var req struct {
 				ID string `json:"id"`
@@ -356,7 +343,7 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "list_dashboards",
 		description: "List dashboards in the current organization (with report titles).",
-		schema:      anthropic.ToolInputSchemaParam{Properties: map[string]any{}},
+		schema:      objectSchema(map[string]any{}),
 		handler: func(ctx context.Context, _ json.RawMessage) execResult {
 			ds, err := dash.List(ctx, tenantID)
 			if err != nil {
@@ -372,12 +359,11 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "get_dashboard",
 		description: "Get one dashboard with its reports.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{"slug": stringProp("Dashboard slug.")},
-			Required:   []string{"slug"},
-		},
+		schema:      objectSchema(map[string]any{"slug": stringProp("Dashboard slug.")}, "slug"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
-			var req struct{ Slug string `json:"slug"` }
+			var req struct {
+				Slug string `json:"slug"`
+			}
 			if err := json.Unmarshal(input, &req); err != nil {
 				return execResult{Err: err}
 			}
@@ -392,23 +378,16 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "create_dashboard",
 		description: "Create a new dashboard. Optionally include an initial list of reports (widgets). Every report has a query_spec; see the system prompt for the schema.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"name":        stringProp("Human-facing title, e.g. 'Financial overview'."),
-				"slug":        stringProp("Optional machine slug; auto-generated from name if omitted."),
-				"description": stringProp("Optional one-line description."),
-				"reports": map[string]any{
-					"type":        "array",
-					"description": "Initial reports to include on this dashboard.",
-					"items": map[string]any{
-						"type":       "object",
-						"properties": reportSchemaProperties(),
-						"required":   []string{"title", "widget_type", "query_spec"},
-					},
-				},
+		schema: objectSchema(map[string]any{
+			"name":        stringProp("Human-facing title, e.g. 'Financial overview'."),
+			"slug":        stringProp("Optional machine slug; auto-generated from name if omitted."),
+			"description": stringProp("Optional one-line description."),
+			"reports": map[string]any{
+				"type":        "array",
+				"description": "Initial reports to include on this dashboard.",
+				"items":       objectSchema(reportSchemaProperties(), "title", "widget_type", "query_spec"),
 			},
-			Required: []string{"name"},
-		},
+		}, "name"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
 			var in reports.CreateDashboardInput
 			if err := json.Unmarshal(input, &in); err != nil {
@@ -428,21 +407,14 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "add_report",
 		description: "Add a report to an existing dashboard.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"slug":   stringProp("Dashboard slug."),
-				"report": map[string]any{
-					"type":       "object",
-					"properties": reportSchemaProperties(),
-					"required":   []string{"title", "widget_type", "query_spec"},
-				},
-			},
-			Required: []string{"slug", "report"},
-		},
+		schema: objectSchema(map[string]any{
+			"slug":   stringProp("Dashboard slug."),
+			"report": objectSchema(reportSchemaProperties(), "title", "widget_type", "query_spec"),
+		}, "slug", "report"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
 			var req struct {
-				Slug   string                     `json:"slug"`
-				Report reports.CreateReportInput  `json:"report"`
+				Slug   string                    `json:"slug"`
+				Report reports.CreateReportInput `json:"report"`
 			}
 			if err := json.Unmarshal(input, &req); err != nil {
 				return execResult{Err: err}
@@ -458,25 +430,22 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "update_report",
 		description: "Edit an existing report's title, subtitle, widget type, query spec, or width.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"id":          stringProp("Report id."),
-				"title":       stringProp("New title."),
-				"subtitle":    stringProp("New subtitle."),
-				"widget_type": stringProp("kpi | bar | line | pie | table."),
-				"width":       map[string]any{"type": "integer", "description": "New width (1-12)."},
-				"query_spec":  map[string]any{"type": "object", "description": "Replacement query_spec."},
-			},
-			Required: []string{"id"},
-		},
+		schema: objectSchema(map[string]any{
+			"id":          stringProp("Report id."),
+			"title":       stringProp("New title."),
+			"subtitle":    stringProp("New subtitle."),
+			"widget_type": stringProp("kpi | bar | line | area | pie | table."),
+			"width":       map[string]any{"type": "integer", "description": "New width (1-12)."},
+			"query_spec":  map[string]any{"type": "object", "description": "Replacement query_spec."},
+		}, "id"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
 			var req struct {
-				ID         string             `json:"id"`
-				Title      *string            `json:"title,omitempty"`
-				Subtitle   *string            `json:"subtitle,omitempty"`
+				ID         string              `json:"id"`
+				Title      *string             `json:"title,omitempty"`
+				Subtitle   *string             `json:"subtitle,omitempty"`
 				WidgetType *reports.WidgetType `json:"widget_type,omitempty"`
-				QuerySpec  *reports.QuerySpec `json:"query_spec,omitempty"`
-				Width      *int               `json:"width,omitempty"`
+				QuerySpec  *reports.QuerySpec  `json:"query_spec,omitempty"`
+				Width      *int                `json:"width,omitempty"`
 			}
 			if err := json.Unmarshal(input, &req); err != nil {
 				return execResult{Err: err}
@@ -494,12 +463,11 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "delete_report",
 		description: "Delete a report by id.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{"id": stringProp("Report id.")},
-			Required:   []string{"id"},
-		},
+		schema:      objectSchema(map[string]any{"id": stringProp("Report id.")}, "id"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
-			var req struct{ ID string `json:"id"` }
+			var req struct {
+				ID string `json:"id"`
+			}
 			if err := json.Unmarshal(input, &req); err != nil {
 				return execResult{Err: err}
 			}
@@ -513,12 +481,11 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "delete_dashboard",
 		description: "Delete a dashboard and all its reports. Destructive; confirm with the user first.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{"slug": stringProp("Dashboard slug.")},
-			Required:   []string{"slug"},
-		},
+		schema:      objectSchema(map[string]any{"slug": stringProp("Dashboard slug.")}, "slug"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
-			var req struct{ Slug string `json:"slug"` }
+			var req struct {
+				Slug string `json:"slug"`
+			}
 			if err := json.Unmarshal(input, &req); err != nil {
 				return execResult{Err: err}
 			}
@@ -532,16 +499,13 @@ func (a *Agent) buildTools(_ context.Context, tenantID, pgSchema string) toolset
 	add(tool{
 		name:        "query_rows",
 		description: "Return recent rows from an entity. Use this to answer questions about current data or verify state before mutating.",
-		schema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"entity": stringProp("Entity name."),
-				"limit": map[string]any{
-					"type":        "integer",
-					"description": "Max rows. Default 20, max 200.",
-				},
+		schema: objectSchema(map[string]any{
+			"entity": stringProp("Entity name."),
+			"limit": map[string]any{
+				"type":        "integer",
+				"description": "Max rows. Default 20, max 200.",
 			},
-			Required: []string{"entity"},
-		},
+		}, "entity"),
 		handler: func(ctx context.Context, input json.RawMessage) execResult {
 			var req struct {
 				Entity string `json:"entity"`
@@ -584,11 +548,7 @@ func entitySchemaProperties() map[string]any {
 		"fields": map[string]any{
 			"type":        "array",
 			"description": "Columns. Do not include id, created_at, or updated_at.",
-			"items": map[string]any{
-				"type":       "object",
-				"properties": fieldSchemaProperties(),
-				"required":   []string{"name", "display_name", "data_type"},
-			},
+			"items":       objectSchema(fieldSchemaProperties(), "name", "display_name", "data_type"),
 		},
 	}
 }
@@ -605,11 +565,7 @@ func reportSchemaProperties() map[string]any {
 			"type":        "integer",
 			"description": "Grid columns (1-12). Omit to default to 6.",
 		},
-		"query_spec": map[string]any{
-			"type":       "object",
-			"properties": querySpecProperties(),
-			"required":   []string{"entity"},
-		},
+		"query_spec": objectSchema(querySpecProperties(), "entity"),
 		"options": map[string]any{
 			"type":        "object",
 			"description": "Per-widget render options (all optional).",
@@ -636,67 +592,45 @@ func querySpecProperties() map[string]any {
 		"filters": map[string]any{
 			"type":        "array",
 			"description": "WHERE clauses combined with AND.",
-			"items": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"field": stringProp("Column name."),
-					"op": map[string]any{
-						"type": "string",
-						"enum": []string{
-							"eq", "ne", "gt", "gte", "lt", "lte",
-							"contains", "in", "is_null", "is_not_null",
-						},
-					},
-					"value": map[string]any{
-						"description": "Scalar or array (for in).",
+			"items": objectSchema(map[string]any{
+				"field": stringProp("Column name."),
+				"op": map[string]any{
+					"type": "string",
+					"enum": []string{
+						"eq", "ne", "gt", "gte", "lt", "lte",
+						"contains", "in", "is_null", "is_not_null",
 					},
 				},
-				"required": []string{"field", "op"},
-			},
-		},
-		"group_by": map[string]any{
-			"type": "object",
-			"description": "Primary grouping: the x-axis for charts.",
-			"properties": map[string]any{
-				"field":  stringProp("Field to group by."),
-				"bucket": map[string]any{
-					"type": "string",
-					"enum": []string{"", "day", "week", "month", "quarter", "year"},
+				"value": map[string]any{
+					"description": "Scalar or array (for in).",
 				},
-			},
-			"required": []string{"field"},
+			}, "field", "op"),
 		},
-		"series_by": map[string]any{
-			"type": "object",
-			"description": "Secondary grouping for bar/line/area charts. Each distinct value becomes its own series (grouped bars, multiple lines). Do NOT use with kpi, pie, or table.",
-			"properties": map[string]any{
-				"field":  stringProp("Field to split series by."),
-				"bucket": map[string]any{
-					"type": "string",
-					"enum": []string{"", "day", "week", "month", "quarter", "year"},
-				},
+		"group_by": objectSchema(map[string]any{
+			"field": stringProp("Field to group by."),
+			"bucket": map[string]any{
+				"type": "string",
+				"enum": []string{"", "day", "week", "month", "quarter", "year"},
 			},
-			"required": []string{"field"},
-		},
-		"aggregate": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"fn": map[string]any{
-					"type": "string",
-					"enum": []string{"count", "sum", "avg", "min", "max"},
-				},
-				"field": stringProp("Required for sum/avg/min/max. For count, use empty string for count(*)."),
+		}, "field"),
+		"series_by": objectSchema(map[string]any{
+			"field": stringProp("Field to split series by."),
+			"bucket": map[string]any{
+				"type": "string",
+				"enum": []string{"", "day", "week", "month", "quarter", "year"},
 			},
-			"required": []string{"fn"},
-		},
-		"sort": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"field": stringProp("Field name, or 'label'/'value' for aggregated queries."),
-				"dir":   map[string]any{"type": "string", "enum": []string{"asc", "desc"}},
+		}, "field"),
+		"aggregate": objectSchema(map[string]any{
+			"fn": map[string]any{
+				"type": "string",
+				"enum": []string{"count", "sum", "avg", "min", "max"},
 			},
-			"required": []string{"field", "dir"},
-		},
+			"field": stringProp("Required for sum/avg/min/max. For count, use empty string for count(*)."),
+		}, "fn"),
+		"sort": objectSchema(map[string]any{
+			"field": stringProp("Field name, or 'label'/'value' for aggregated queries."),
+			"dir":   map[string]any{"type": "string", "enum": []string{"asc", "desc"}},
+		}, "field", "dir"),
 		"limit": map[string]any{"type": "integer", "description": "Max rows; default 500 for series, 100 for tables."},
 		"date_filter_field": stringProp(
 			"Optional: date/timestamp field that should respond to the dashboard's date-range selector. " +
@@ -706,7 +640,7 @@ func querySpecProperties() map[string]any {
 		"compare_period": map[string]any{
 			"type":        "string",
 			"enum":        []string{"", "previous_period", "previous_year"},
-			"description": "KPI only. When a dashboard range is set, also queries the prior window and renders a delta. 'previous_period' shifts back by the window length; 'previous_year' shifts back 1 year.",
+			"description": "KPI only. When a dashboard range is set, also queries the prior window and renders a delta.",
 		},
 	}
 }
@@ -727,4 +661,3 @@ func fieldSchemaProperties() map[string]any {
 		"reference_entity": stringProp("If data_type is reference, the target entity name."),
 	}
 }
-

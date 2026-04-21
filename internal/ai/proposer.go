@@ -3,23 +3,24 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/sashabaranov/go-openai"
 
 	"github.com/openrow/openrow/internal/entities"
+	"github.com/openrow/openrow/internal/llm"
 )
 
-const toolName = "propose_entity"
+const proposeToolName = "propose_entity"
 
-const systemPrompt = `You design database entities for a business ERP.
+const proposerSystemPrompt = `You design database entities for a business ERP.
 
 Given a natural-language description, return exactly one entity using the propose_entity tool.
 
 Rules:
-- name: lowercase snake_case, plural when it represents a collection (customers, invoices). Machine identifier only — must match ^[a-z][a-z0-9_]{0,62}$.
+- name: lowercase snake_case, plural when it represents a collection (customers, invoices). Machine identifier only; must match ^[a-z][a-z0-9_]{0,62}$.
 - display_name: human label, title case ("Customers", "Purchase Orders").
 - Fields you should almost never add: id, created_at, updated_at — the system adds them.
 - Reasonable fields only. Don't invent fields the user didn't hint at. If the user says "customer with name and email", return two fields. Don't speculate "phone, address, notes".
@@ -28,23 +29,25 @@ Rules:
 - Prefer text for free strings, numeric for money/quantities, date for dates without time, timestamptz when time of day matters.
 - Set is_required only when the business clearly needs it. Don't mark everything required.`
 
+// Proposer turns a natural-language description into an entity spec, via a forced tool call.
 type Proposer struct {
-	client anthropic.Client
-	model  anthropic.Model
+	llm *llm.Service
 }
 
-func NewProposer(apiKey string) *Proposer {
-	if apiKey == "" {
-		return nil
-	}
-	c := anthropic.NewClient(option.WithAPIKey(apiKey))
-	return &Proposer{client: c, model: anthropic.ModelClaudeSonnet4_6}
+func NewProposer(llmSvc *llm.Service) *Proposer {
+	return &Proposer{llm: llmSvc}
 }
 
-func (p *Proposer) Propose(ctx context.Context, description string, existing []entities.Entity) (*entities.EntitySpec, error) {
+func (p *Proposer) Propose(ctx context.Context, tenantID, description string, existing []entities.Entity) (*entities.EntitySpec, error) {
 	if p == nil {
-		return nil, fmt.Errorf("ANTHROPIC_API_KEY not configured")
+		return nil, errors.New("proposer not available")
 	}
+	cfg, err := p.llm.Resolve(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	client := llm.NewClient(cfg)
+
 	existingNames := make([]string, len(existing))
 	for i, e := range existing {
 		existingNames[i] = e.Name
@@ -54,47 +57,47 @@ func (p *Proposer) Propose(ctx context.Context, description string, existing []e
 		userMsg += "\n\nExisting entities you can reference: " + strings.Join(existingNames, ", ")
 	}
 
-	tool := anthropic.ToolParam{
-		Name:        toolName,
-		Description: anthropic.String("Propose an entity (table) definition for the ERP."),
-		InputSchema: anthropic.ToolInputSchemaParam{
-			Properties: entitySchemaProperties(),
-			Required:   []string{"name", "display_name", "fields"},
-		},
-	}
-
-	params := anthropic.MessageNewParams{
-		Model:     p.model,
+	resp, err := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+		Model:     cfg.Model,
 		MaxTokens: 2048,
-		System: []anthropic.TextBlockParam{
-			{Text: systemPrompt},
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: proposerSystemPrompt},
+			{Role: openai.ChatMessageRoleUser, Content: userMsg},
 		},
-		Tools:      []anthropic.ToolUnionParam{{OfTool: &tool}},
-		ToolChoice: anthropic.ToolChoiceParamOfTool(toolName),
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(userMsg)),
+		Tools: []openai.Tool{{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name:        proposeToolName,
+				Description: "Propose one entity (table) definition for the ERP.",
+				Parameters:  objectSchema(entitySchemaProperties(), "name", "display_name", "fields"),
+			},
+		}},
+		// Force the model to call propose_entity exactly (structured output).
+		ToolChoice: map[string]any{
+			"type":     "function",
+			"function": map[string]string{"name": proposeToolName},
 		},
-		CacheControl: anthropic.NewCacheControlEphemeralParam(),
-	}
-
-	resp, err := p.client.Messages.New(ctx, params)
+	})
 	if err != nil {
-		return nil, fmt.Errorf("claude: %w", err)
+		return nil, fmt.Errorf("llm: %w", err)
 	}
-
-	for _, block := range resp.Content {
-		if block.Type != "tool_use" || block.Name != toolName {
-			continue
-		}
-		var spec entities.EntitySpec
-		if err := json.Unmarshal(block.Input, &spec); err != nil {
-			return nil, fmt.Errorf("unmarshal tool input: %w", err)
-		}
-		if err := spec.Validate(); err != nil {
-			return nil, fmt.Errorf("claude returned invalid spec: %w", err)
-		}
-		return &spec, nil
+	if len(resp.Choices) == 0 {
+		return nil, errors.New("llm returned no choices")
 	}
-	return nil, fmt.Errorf("claude did not call %s", toolName)
+	calls := resp.Choices[0].Message.ToolCalls
+	if len(calls) == 0 {
+		return nil, fmt.Errorf("llm did not call %s", proposeToolName)
+	}
+	call := calls[0]
+	if call.Function.Name != proposeToolName {
+		return nil, fmt.Errorf("llm called unexpected tool %q", call.Function.Name)
+	}
+	var spec entities.EntitySpec
+	if err := json.Unmarshal([]byte(call.Function.Arguments), &spec); err != nil {
+		return nil, fmt.Errorf("unmarshal proposed entity: %w", err)
+	}
+	if err := spec.Validate(); err != nil {
+		return nil, fmt.Errorf("llm returned invalid spec: %w", err)
+	}
+	return &spec, nil
 }
-

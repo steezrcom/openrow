@@ -6,14 +6,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/sashabaranov/go-openai"
 
 	"github.com/openrow/openrow/internal/entities"
+	"github.com/openrow/openrow/internal/llm"
 	"github.com/openrow/openrow/internal/reports"
 )
 
-const agentSystemPrompt = `You are the assistant inside OpenRow, an AI-native ERP.
+const agentSystemPrompt = `You are the assistant inside OpenRow, an AI-native operations platform.
 
 You design and operate the user's database through tools. Each user turn: use tools as needed, then briefly describe what you did (1-3 sentences max, no preamble). If no action is required, just answer.
 
@@ -77,32 +77,28 @@ type Action struct {
 	Error      string          `json:"error,omitempty"`
 }
 
-// Agent wraps the Claude tool loop with the fixed set of ERP tools.
+// Agent wraps the tool-calling loop against any OpenAI-compatible provider.
+// Provider/model/api-key are resolved per-tenant at request time via llm.Service.
 type Agent struct {
-	client     anthropic.Client
-	model      anthropic.Model
+	llm        *llm.Service
 	entities   *entities.Service
 	dashboards *reports.Service
 }
 
-func NewAgent(apiKey string, ent *entities.Service, dash *reports.Service) *Agent {
-	if apiKey == "" {
-		return nil
-	}
-	return &Agent{
-		client:     anthropic.NewClient(option.WithAPIKey(apiKey)),
-		model:      anthropic.ModelClaudeSonnet4_6,
-		entities:   ent,
-		dashboards: dash,
-	}
+func NewAgent(llmSvc *llm.Service, ent *entities.Service, dash *reports.Service) *Agent {
+	return &Agent{llm: llmSvc, entities: ent, dashboards: dash}
 }
 
-// Run executes a single conversation turn. `history` is prior turns (user + assistant).
-// userMessage is the new user message being sent.
+// Run executes a single conversation turn.
 func (a *Agent) Run(ctx context.Context, tenantID, pgSchema string, history []ChatTurn, userMessage string) (*ChatTurn, error) {
 	if a == nil {
-		return nil, errors.New("ANTHROPIC_API_KEY not configured")
+		return nil, errors.New("agent not available")
 	}
+	cfg, err := a.llm.Resolve(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	client := llm.NewClient(cfg)
 
 	existing, err := a.entities.List(ctx, tenantID)
 	if err != nil {
@@ -110,122 +106,87 @@ func (a *Agent) Run(ctx context.Context, tenantID, pgSchema string, history []Ch
 	}
 
 	tools := a.buildTools(ctx, tenantID, pgSchema)
-
 	msgs := buildMessageHistory(history, userMessage, existing)
-
-	params := anthropic.MessageNewParams{
-		Model:     a.model,
-		MaxTokens: 2048,
-		System: []anthropic.TextBlockParam{
-			{Text: agentSystemPrompt},
-		},
-		Tools:        tools.toolParams(),
-		Messages:     msgs,
-		CacheControl: anthropic.NewCacheControlEphemeralParam(),
-	}
 
 	var actions []Action
 	const maxIterations = 8
 
 	for iter := 0; iter < maxIterations; iter++ {
-		resp, err := a.client.Messages.New(ctx, params)
-		if err != nil {
-			return nil, fmt.Errorf("claude: %w", err)
-		}
-
-		var (
-			narrative  string
-			toolUses   []toolUseRef
-			nextBlocks []anthropic.ContentBlockParamUnion
-		)
-
-		for _, block := range resp.Content {
-			switch block.Type {
-			case "text":
-				narrative += block.Text
-				nextBlocks = append(nextBlocks, anthropic.NewTextBlock(block.Text))
-			case "tool_use":
-				toolUses = append(toolUses, toolUseRef{
-					ID:    block.ID,
-					Name:  block.Name,
-					Input: block.Input,
-				})
-				nextBlocks = append(nextBlocks, anthropic.ContentBlockParamUnion{
-					OfToolUse: &anthropic.ToolUseBlockParam{
-						ID:    block.ID,
-						Name:  block.Name,
-						Input: block.Input,
-					},
-				})
-			}
-		}
-
-		if len(toolUses) == 0 {
-			return &ChatTurn{Role: "assistant", Text: narrative, Actions: actions}, nil
-		}
-
-		// Record the assistant's full message (text + tool_use blocks) for the next call.
-		params.Messages = append(params.Messages, anthropic.MessageParam{
-			Role:    anthropic.MessageParamRoleAssistant,
-			Content: nextBlocks,
+		resp, err := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+			Model:      cfg.Model,
+			Messages:   msgs,
+			Tools:      tools.toolParams(),
+			ToolChoice: "auto",
+			MaxTokens:  2048,
 		})
+		if err != nil {
+			return nil, fmt.Errorf("llm: %w", err)
+		}
+		if len(resp.Choices) == 0 {
+			return nil, errors.New("llm returned no choices")
+		}
+		choice := resp.Choices[0]
 
-		// Execute each tool and build a user message with the results.
-		var resultBlocks []anthropic.ContentBlockParamUnion
-		for _, tu := range toolUses {
-			exec := tools.run(ctx, tu.Name, tu.Input)
+		if len(choice.Message.ToolCalls) == 0 {
+			return &ChatTurn{Role: "assistant", Text: choice.Message.Content, Actions: actions}, nil
+		}
+
+		// Append the assistant message (with its tool calls) so subsequent tool
+		// messages refer to each call by id.
+		msgs = append(msgs, choice.Message)
+
+		for _, tc := range choice.Message.ToolCalls {
+			exec := tools.run(ctx, tc.Function.Name, json.RawMessage(tc.Function.Arguments))
 			actions = append(actions, Action{
-				Tool:       tu.Name,
-				Input:      tu.Input,
+				Tool:       tc.Function.Name,
+				Input:      json.RawMessage(tc.Function.Arguments),
 				Summary:    exec.Summary,
 				EntityName: exec.EntityName,
 				Error:      exec.ErrMsg(),
 			})
-			resultBlocks = append(resultBlocks, anthropic.ContentBlockParamUnion{
-				OfToolResult: &anthropic.ToolResultBlockParam{
-					ToolUseID: tu.ID,
-					Content: []anthropic.ToolResultBlockParamContentUnion{
-						{OfText: &anthropic.TextBlockParam{Text: exec.ResultText()}},
-					},
-					IsError: anthropic.Bool(exec.Err != nil),
-				},
+			msgs = append(msgs, openai.ChatCompletionMessage{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: tc.ID,
+				Content:    exec.ResultText(),
 			})
 		}
-
-		params.Messages = append(params.Messages, anthropic.MessageParam{
-			Role:    anthropic.MessageParamRoleUser,
-			Content: resultBlocks,
-		})
 	}
 
 	return nil, fmt.Errorf("agent exceeded %d tool iterations", maxIterations)
 }
 
-type toolUseRef struct {
-	ID    string
-	Name  string
-	Input json.RawMessage
-}
-
-func buildMessageHistory(history []ChatTurn, newUserMessage string, existing []entities.Entity) []anthropic.MessageParam {
-	msgs := make([]anthropic.MessageParam, 0, len(history)+1)
+func buildMessageHistory(history []ChatTurn, newUserMessage string, existing []entities.Entity) []openai.ChatCompletionMessage {
+	msgs := []openai.ChatCompletionMessage{
+		{Role: openai.ChatMessageRoleSystem, Content: agentSystemPrompt},
+	}
 	for _, t := range history {
-		if t.Role == "user" {
-			msgs = append(msgs, anthropic.NewUserMessage(anthropic.NewTextBlock(t.Text)))
-		} else if t.Role == "assistant" && t.Text != "" {
-			msgs = append(msgs, anthropic.NewAssistantMessage(anthropic.NewTextBlock(t.Text)))
+		switch t.Role {
+		case "user":
+			msgs = append(msgs, openai.ChatCompletionMessage{
+				Role:    openai.ChatMessageRoleUser,
+				Content: t.Text,
+			})
+		case "assistant":
+			if t.Text != "" {
+				msgs = append(msgs, openai.ChatCompletionMessage{
+					Role:    openai.ChatMessageRoleAssistant,
+					Content: t.Text,
+				})
+			}
 		}
 	}
-
-	var ctx string
+	var suffix string
 	if len(existing) > 0 {
 		names := make([]string, 0, len(existing))
 		for _, e := range existing {
 			names = append(names, e.Name)
 		}
-		ctx = "\n\n[current entities: " + joinNames(names) + "]"
+		suffix = "\n\n[current entities: " + joinNames(names) + "]"
 	}
-	msgs = append(msgs, anthropic.NewUserMessage(anthropic.NewTextBlock(newUserMessage+ctx)))
+	msgs = append(msgs, openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleUser,
+		Content: newUserMessage + suffix,
+	})
 	return msgs
 }
 

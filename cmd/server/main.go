@@ -16,8 +16,10 @@ import (
 	"github.com/openrow/openrow/internal/config"
 	"github.com/openrow/openrow/internal/entities"
 	"github.com/openrow/openrow/internal/httpapi"
+	"github.com/openrow/openrow/internal/llm"
 	"github.com/openrow/openrow/internal/mailer"
 	"github.com/openrow/openrow/internal/reports"
+	"github.com/openrow/openrow/internal/secrets"
 	"github.com/openrow/openrow/internal/store"
 	"github.com/openrow/openrow/internal/tenant"
 )
@@ -52,9 +54,15 @@ func run(log *slog.Logger) error {
 	}
 	log.Info("migrations applied")
 
+	enc, err := secrets.NewFromEnv("OPENROW_SECRET_KEY")
+	if err != nil {
+		return err
+	}
+
 	entSvc := entities.NewService(pool)
 	dashSvc := reports.NewService(pool)
 	reportExec := reports.NewExecutor(pool, entSvc)
+	llmSvc := llm.NewService(pool, enc, cfg.AnthropicAPIKey)
 
 	api := httpapi.New(httpapi.Deps{
 		Log:            log,
@@ -66,8 +74,9 @@ func run(log *slog.Logger) error {
 		Entities:       entSvc,
 		Dashboards:     dashSvc,
 		ReportExec:     reportExec,
-		Proposer:       ai.NewProposer(cfg.AnthropicAPIKey),
-		Agent:          ai.NewAgent(cfg.AnthropicAPIKey, entSvc, dashSvc),
+		Proposer:       ai.NewProposer(llmSvc),
+		Agent:          ai.NewAgent(llmSvc, entSvc, dashSvc),
+		LLM:            llmSvc,
 		Mailer:         &mailer.Stdout{Log: log},
 		AppURL:         getOr("APP_URL", "http://localhost:5173"),
 		SecureCookies:  strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true"),

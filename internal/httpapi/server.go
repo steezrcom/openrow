@@ -7,6 +7,7 @@ import (
 	"github.com/openrow/openrow/internal/ai"
 	"github.com/openrow/openrow/internal/auth"
 	"github.com/openrow/openrow/internal/entities"
+	"github.com/openrow/openrow/internal/llm"
 	"github.com/openrow/openrow/internal/mailer"
 	"github.com/openrow/openrow/internal/reports"
 	"github.com/openrow/openrow/internal/spa"
@@ -25,6 +26,7 @@ type Server struct {
 	reportExec     *reports.Executor
 	proposer       *ai.Proposer
 	agent          *ai.Agent
+	llm            *llm.Service
 	mail           mailer.Mailer
 	appURL         string
 	secureCookies  bool
@@ -43,6 +45,7 @@ type Deps struct {
 	ReportExec     *reports.Executor
 	Proposer       *ai.Proposer
 	Agent          *ai.Agent
+	LLM            *llm.Service
 	Mailer         mailer.Mailer
 	// AppURL is the public URL users should be directed to (used in email links).
 	AppURL string
@@ -70,6 +73,7 @@ func New(d Deps) *Server {
 		reportExec:     d.ReportExec,
 		proposer:       d.Proposer,
 		agent:          d.Agent,
+		llm:            d.LLM,
 		mail:           d.Mailer,
 		appURL:         appURL,
 		secureCookies:  d.SecureCookies,
@@ -112,6 +116,13 @@ func (s *Server) Handler() http.Handler {
 
 	authed.Handle("GET /api/v1/templates", auth.RequireAuth(http.HandlerFunc(s.listTemplates)))
 	authed.Handle("POST /api/v1/templates/{id}/apply", auth.RequireMembership(http.HandlerFunc(s.applyTemplate)))
+
+	authed.Handle("GET /api/v1/llm/providers", auth.RequireAuth(http.HandlerFunc(s.listLLMProviders)))
+	authed.Handle("GET /api/v1/llm/config", auth.RequireMembership(http.HandlerFunc(s.getLLMConfig)))
+	authed.Handle("PUT /api/v1/llm/config", auth.RequireMembership(http.HandlerFunc(s.putLLMConfig)))
+	authed.Handle("DELETE /api/v1/llm/config", auth.RequireMembership(http.HandlerFunc(s.deleteLLMConfig)))
+	authed.Handle("POST /api/v1/llm/models/list", auth.RequireAuth(http.HandlerFunc(s.listLLMModels)))
+	authed.Handle("POST /api/v1/llm/test", auth.RequireAuth(http.HandlerFunc(s.testLLM)))
 
 	authed.Handle("GET /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.listDashboards)))
 	authed.Handle("POST /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.createDashboard)))

@@ -41,7 +41,7 @@ func (s *Server) proposeEntity(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	spec, err := s.proposer.Propose(r.Context(), req.Description, existing)
+	spec, err := s.proposer.Propose(r.Context(), m.TenantID, req.Description, existing)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, "proposer: "+err.Error())
 		return
