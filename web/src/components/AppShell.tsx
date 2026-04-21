@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import { ChatPanel } from '@/components/ChatPanel'
 import { CreateDashboardModal } from '@/components/CreateDashboardModal'
 import { TimerWidget } from '@/components/TimerWidget'
+import { useT } from '@/lib/i18n'
 
 export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe()
@@ -65,6 +66,7 @@ function Sidebar({
   const match = useMatchRoute()
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const t = useT()
   const [newDashboardOpen, setNewDashboardOpen] = useState(false)
 
   const logout = useMutation({
@@ -94,31 +96,34 @@ function Sidebar({
 
       <nav className="mt-6 flex-1 overflow-y-auto px-3 pb-4">
         <NavItem to="/app" icon={<Database className="h-4 w-4" />} active={isDashboardActive}>
-          Home
+          {t('nav.home')}
         </NavItem>
         <NavItem
           to="/app/time"
           icon={<Clock className="h-4 w-4" />}
           active={Boolean(match({ to: '/app/time' }))}
         >
-          Timesheet
+          {t('nav.timesheet')}
         </NavItem>
         <NavItem
-          to="/app/settings/llm"
+          to="/app/settings/preferences"
           icon={<Settings className="h-4 w-4" />}
-          active={Boolean(match({ to: '/app/settings/llm' }))}
+          active={
+            Boolean(match({ to: '/app/settings/preferences' })) ||
+            Boolean(match({ to: '/app/settings/llm' }))
+          }
         >
-          Settings
+          {t('nav.settings')}
         </NavItem>
 
         <div className="mt-5 flex items-center justify-between px-3 pb-1">
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
-            Dashboards
+            {t('nav.dashboards')}
           </span>
           <button
             onClick={() => setNewDashboardOpen(true)}
             className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-            title="New dashboard"
+            title={t('nav.newDashboard')}
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
@@ -153,7 +158,7 @@ function Sidebar({
           )
         })}
 
-        <SectionLabel>Entities</SectionLabel>
+        <SectionLabel>{t('nav.entities')}</SectionLabel>
 
         {loadingEntities && (
           <div className="space-y-1 px-2 py-1">
@@ -193,7 +198,7 @@ function Sidebar({
           to="/app"
           className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border/80 px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
         >
-          <Plus className="h-3.5 w-3.5" /> New entity
+          <Plus className="h-3.5 w-3.5" /> {t('nav.newEntity')}
         </Link>
       </nav>
 
@@ -211,7 +216,7 @@ function Sidebar({
           </div>
           <button
             onClick={() => logout.mutate()}
-            title="Log out"
+            title={t('nav.logout')}
             className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <LogOut className="h-4 w-4" />

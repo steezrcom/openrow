@@ -7,6 +7,7 @@ import { useMe } from '@/hooks/useMe'
 import { useTimer, formatElapsed } from '@/lib/timer'
 import { Input } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 // TimerWidget lives in the app header. Shows either a "Start" button (idle)
 // or a pulsing elapsed-time display (running). Clicking either toggles a
@@ -25,6 +26,7 @@ export function TimerWidget() {
 function TimerWidgetInner() {
   const me = useMe()
   const timer = useTimer()
+  const t = useT()
   const running = timer.running
   const [open, setOpen] = useState(false)
   const [now, setNow] = useState(() => Date.now())
@@ -56,7 +58,7 @@ function TimerWidgetInner() {
             ? 'bg-primary/10 text-primary hover:bg-primary/15'
             : 'bg-background text-muted-foreground hover:bg-accent hover:text-foreground'
         )}
-        title={running ? 'Timer running' : 'Start timer'}
+        title={running ? t('timer.running') : t('timer.startTimer')}
       >
         {running ? (
           <>
@@ -72,7 +74,7 @@ function TimerWidgetInner() {
         ) : (
           <>
             <Play className="h-3.5 w-3.5" />
-            <span className="text-xs">Track time</span>
+            <span className="text-xs">{t('timer.start')}</span>
           </>
         )}
       </button>
