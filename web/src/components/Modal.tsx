@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -25,7 +26,9 @@ export function Modal({
 
   if (!open) return null
 
-  return (
+  // Portal to body so the modal escapes any ancestor stacking context
+  // (e.g. the sidebar uses position: sticky, which traps z-index).
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center p-6">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className={cn(
@@ -44,6 +47,7 @@ export function Modal({
         </header>
         <div className="px-5 py-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
