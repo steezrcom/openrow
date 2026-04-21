@@ -127,7 +127,7 @@ func (s *Server) executeReport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "entity "+report.QuerySpec.Entity+" referenced by report no longer exists")
 		return
 	}
-	result, err := s.reportExec.Execute(r.Context(), m.PGSchema, ent, &report.QuerySpec)
+	result, err := s.reportExec.Execute(r.Context(), m.PGSchema, m.TenantID, ent, &report.QuerySpec)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return

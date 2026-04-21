@@ -54,7 +54,7 @@ func run(log *slog.Logger) error {
 
 	entSvc := entities.NewService(pool)
 	dashSvc := reports.NewService(pool)
-	reportExec := reports.NewExecutor(pool)
+	reportExec := reports.NewExecutor(pool, entSvc)
 
 	api := httpapi.New(httpapi.Deps{
 		Log:            log,

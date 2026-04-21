@@ -171,7 +171,18 @@ function PieView({ rows }: { rows: Record<string, unknown>[] }) {
 }
 
 function TableView({ rows }: { rows: Record<string, unknown>[] }) {
-  const cols = Object.keys(rows[0]).filter((k) => k !== 'id' && k !== 'updated_at')
+  // Collapse <field>__label pairs: hide the raw id column when a label sibling exists.
+  const allKeys = Object.keys(rows[0])
+  const labelKeys = new Set(
+    allKeys.filter((k) => k.endsWith('__label')).map((k) => k.replace(/__label$/, ''))
+  )
+  const cols = allKeys.filter((k) => {
+    if (k === 'id' || k === 'updated_at') return false
+    if (k.endsWith('__label')) return false
+    return true
+  })
+  const displayKey = (c: string) => (labelKeys.has(c) ? c + '__label' : c)
+
   return (
     <div className="overflow-auto">
       <table className="w-full text-xs">
@@ -184,7 +195,7 @@ function TableView({ rows }: { rows: Record<string, unknown>[] }) {
           {rows.slice(0, 50).map((row, i) => (
             <tr key={i} className="border-b border-border/40">
               {cols.map((c) => (
-                <td key={c} className="px-2 py-1.5">{formatCell(row[c])}</td>
+                <td key={c} className="px-2 py-1.5">{formatCell(row[displayKey(c)])}</td>
               ))}
             </tr>
           ))}
