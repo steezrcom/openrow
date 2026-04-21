@@ -21,7 +21,14 @@ function FlowDetailPage() {
   const [error, setError] = useState<string | null>(null)
 
   const flow = useQuery({ queryKey: ['flow', id], queryFn: () => api.getFlow(id) })
-  const runs = useQuery({ queryKey: ['flow-runs', id], queryFn: () => api.listFlowRuns(id) })
+  // Poll runs so status transitions (queued → running → succeeded /
+  // awaiting_approval) show up without a manual refresh. 3s is fast
+  // enough to feel live and cheap enough to run indefinitely.
+  const runs = useQuery({
+    queryKey: ['flow-runs', id],
+    queryFn: () => api.listFlowRuns(id),
+    refetchInterval: 3000,
+  })
 
   const trigger = useMutation({
     mutationFn: () => api.triggerFlow(id),
