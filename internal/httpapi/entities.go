@@ -201,6 +201,45 @@ func (s *Server) addField(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"entity": entityDTO(ent)})
 }
 
+// listFieldOptions returns label/id pairs for a reference field's target entity.
+// Used by filter widgets to render a dropdown instead of a raw UUID input.
+// Returns an empty options list for non-reference fields.
+func (s *Server) listFieldOptions(w http.ResponseWriter, r *http.Request) {
+	m, _ := auth.MembershipFromContext(r.Context())
+	ent, err := s.entities.Get(r.Context(), m.TenantID, r.PathValue("name"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "entity not found")
+		return
+	}
+	fieldName := r.PathValue("field")
+	var field *entities.Field
+	for i := range ent.Fields {
+		if ent.Fields[i].Name == fieldName {
+			field = &ent.Fields[i]
+			break
+		}
+	}
+	if field == nil {
+		writeErr(w, http.StatusNotFound, "field not found")
+		return
+	}
+	if field.DataType != entities.TypeReference || field.ReferenceEntity == "" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"options": []interface{}{}})
+		return
+	}
+	target, err := s.entities.Get(r.Context(), m.TenantID, field.ReferenceEntity)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "target entity missing")
+		return
+	}
+	opts, err := s.entities.ListRefOptions(r.Context(), m.PGSchema, target)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"options": opts})
+}
+
 func (s *Server) dropField(w http.ResponseWriter, r *http.Request) {
 	m, _ := auth.MembershipFromContext(r.Context())
 	err := s.entities.DropField(r.Context(), m.TenantID, m.PGSchema,

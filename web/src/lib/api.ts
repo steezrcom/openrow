@@ -265,6 +265,11 @@ export const api = {
       { method: 'DELETE' }
     ),
 
+  listFieldOptions: (entityName: string, fieldName: string) =>
+    request<{ options: RefOption[] }>(
+      `/api/v1/entities/${encodeURIComponent(entityName)}/fields/${encodeURIComponent(fieldName)}/options`
+    ).then((r) => r.options),
+
   listDashboards: () =>
     request<{ dashboards: Dashboard[] }>('/api/v1/dashboards').then((r) => r.dashboards),
 

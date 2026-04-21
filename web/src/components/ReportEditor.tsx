@@ -1,11 +1,20 @@
-import { useEffect, useMemo } from 'react'
-import { useForm, useFieldArray, Controller, type UseFormRegister } from 'react-hook-form'
+import { useEffect, useMemo, useRef } from 'react'
+import {
+  useForm,
+  useFieldArray,
+  useWatch,
+  Controller,
+  type Control,
+  type UseFormRegister,
+  type UseFormSetValue,
+} from 'react-hook-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2 } from 'lucide-react'
 import {
   api,
   ApiError,
   type DataType,
+  type Field,
   type QuerySpec,
   type Report,
   type ReportOptions,
@@ -13,7 +22,8 @@ import {
 } from '@/lib/api'
 import { useEntities } from '@/hooks/useEntities'
 import { useEntityDetail } from '@/hooks/useEntityDetail'
-import { Button, Input, Label } from '@/components/ui'
+import { useFieldOptions } from '@/hooks/useFieldOptions'
+import { Button, Input, Label, Textarea } from '@/components/ui'
 import { Drawer } from '@/components/Drawer'
 import { useState } from 'react'
 
@@ -138,6 +148,30 @@ function parseFilterValue(op: string, raw: string): unknown {
   return raw
 }
 
+function validateBeforeSubmit(v: FormValues): string | null {
+  if (!v.title.trim()) return 'Title is required.'
+  if (!v.entity) return 'Pick an entity.'
+  if (v.widget_type !== 'table' && !v.agg_fn) {
+    return `${v.widget_type} needs an aggregate.`
+  }
+  if ((v.agg_fn === 'sum' || v.agg_fn === 'avg') && !v.agg_field) {
+    return `${v.agg_fn} needs a numeric field.`
+  }
+  if (
+    (v.widget_type === 'bar' ||
+      v.widget_type === 'line' ||
+      v.widget_type === 'area' ||
+      v.widget_type === 'pie') &&
+    !v.group_field
+  ) {
+    return `${v.widget_type} needs a group_by field.`
+  }
+  if (v.widget_type === 'kpi' && v.compare_period && !v.date_filter_field) {
+    return 'compare_period requires a date filter field.'
+  }
+  return null
+}
+
 function formToSpec(v: FormValues): { spec: QuerySpec; options: ReportOptions } {
   const spec: QuerySpec = { entity: v.entity.trim() }
 
@@ -209,7 +243,7 @@ export function ReportEditor({
 }) {
   const qc = useQueryClient()
   const entities = useEntities()
-  const { register, handleSubmit, reset, watch, control, formState: { isSubmitting } } =
+  const { register, handleSubmit, reset, watch, setValue, control, formState: { isSubmitting } } =
     useForm<FormValues>({ defaultValues: blankForm() })
   const [error, setError] = useState<string | null>(null)
 
@@ -219,6 +253,43 @@ export function ReportEditor({
   const aggFn = watch('agg_fn')
   const groupField = watch('group_field')
   const numberFormat = watch('number_format')
+
+  // Auto-clean form fields that don't apply to the current widget type so
+  // switching kpi→bar (or vice-versa) doesn't leave stale state that would
+  // either fail validation or render oddly.
+  const prevWidgetRef = useRef<WidgetType | null>(null)
+  useEffect(() => {
+    if (prevWidgetRef.current === null) {
+      prevWidgetRef.current = widgetType
+      return
+    }
+    if (prevWidgetRef.current === widgetType) return
+    if (widgetType === 'kpi') {
+      setValue('group_field', '')
+      setValue('group_bucket', '')
+      setValue('series_field', '')
+      setValue('series_bucket', '')
+      if (!watch('agg_fn')) setValue('agg_fn', 'count')
+    }
+    if (widgetType === 'pie') {
+      setValue('series_field', '')
+      setValue('series_bucket', '')
+      setValue('compare_period', '')
+    }
+    if (widgetType === 'bar' || widgetType === 'line' || widgetType === 'area') {
+      setValue('compare_period', '')
+    }
+    if (widgetType === 'table') {
+      setValue('agg_fn', '')
+      setValue('agg_field', '')
+      setValue('group_field', '')
+      setValue('group_bucket', '')
+      setValue('series_field', '')
+      setValue('series_bucket', '')
+      setValue('compare_period', '')
+    }
+    prevWidgetRef.current = widgetType
+  }, [widgetType, setValue, watch])
 
   const entityDetail = useEntityDetail(entity)
   const entityFields = entityDetail.data?.fields ?? []
@@ -243,6 +314,8 @@ export function ReportEditor({
 
   const mut = useMutation({
     mutationFn: async (v: FormValues) => {
+      const vErr = validateBeforeSubmit(v)
+      if (vErr) throw new Error(vErr)
       const { spec, options } = formToSpec(v)
       if (!mode) return
       if (mode.kind === 'edit') {
@@ -270,7 +343,8 @@ export function ReportEditor({
       await qc.invalidateQueries({ queryKey: ['report-exec'] })
       onClose()
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'failed'),
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'failed'),
   })
 
   if (!mode) return null
@@ -426,6 +500,9 @@ export function ReportEditor({
                 key={field.id}
                 index={i}
                 register={register}
+                setValue={setValue}
+                control={control}
+                entityName={entity}
                 fields={entityFields}
                 onRemove={() => filtersArray.remove(i)}
               />
@@ -531,24 +608,65 @@ function Hint({ children }: { children: React.ReactNode }) {
 function FilterRow({
   index,
   register,
+  setValue,
+  control,
+  entityName,
   fields,
   onRemove,
 }: {
   index: number
   register: UseFormRegister<FormValues>
-  fields: { id: string; name: string; display_name: string }[]
+  setValue: UseFormSetValue<FormValues>
+  control: Control<FormValues>
+  entityName: string
+  fields: Field[]
   onRemove: () => void
 }) {
+  const current = useWatch({ control, name: `filters.${index}` })
+  const field = fields.find((f) => f.name === current?.field)
+  const op = current?.op ?? 'eq'
+  const isNullOp = op === 'is_null' || op === 'is_not_null'
+  const isInOp = op === 'in'
+  const dataType: DataType | undefined = field?.data_type
+
+  // When the user changes the filter field, clear the value so a stale entry
+  // from a different type doesn't linger.
+  const prevFieldRef = useRef<string | undefined>(current?.field)
+  useEffect(() => {
+    if (prevFieldRef.current !== current?.field) {
+      setValue(`filters.${index}.value` as const, '')
+      prevFieldRef.current = current?.field
+    }
+  }, [current?.field, index, setValue])
+
   return (
-    <div className="grid grid-cols-[1fr_auto_1fr_auto] gap-2">
-      <select className={SELECT_CLASS} {...register(`filters.${index}.field` as const)}>
+    <div className="grid grid-cols-[1fr_auto_1fr_auto] items-start gap-2">
+      <select
+        className={SELECT_CLASS}
+        {...register(`filters.${index}.field` as const)}
+      >
         <option value="">— field —</option>
-        {fields.map((f) => <option key={f.id} value={f.name}>{f.name}</option>)}
+        {fields.map((f) => (
+          <option key={f.id} value={f.name}>{f.name}</option>
+        ))}
       </select>
-      <select className={SELECT_CLASS + ' w-32'} {...register(`filters.${index}.op` as const)}>
+      <select
+        className={SELECT_CLASS + ' w-32'}
+        {...register(`filters.${index}.op` as const)}
+      >
         {FILTER_OPS.map((op) => <option key={op} value={op}>{op}</option>)}
       </select>
-      <Input placeholder="value" {...register(`filters.${index}.value` as const)} />
+      <FilterValueInput
+        index={index}
+        op={op}
+        isNullOp={isNullOp}
+        isInOp={isInOp}
+        dataType={dataType}
+        entityName={entityName}
+        fieldName={current?.field}
+        referenceEntity={field?.reference_entity}
+        register={register}
+      />
       <button
         type="button"
         onClick={onRemove}
@@ -558,5 +676,87 @@ function FilterRow({
         <Trash2 className="h-3.5 w-3.5" />
       </button>
     </div>
+  )
+}
+
+function FilterValueInput({
+  index,
+  op,
+  isNullOp,
+  isInOp,
+  dataType,
+  entityName,
+  fieldName,
+  referenceEntity,
+  register,
+}: {
+  index: number
+  op: string
+  isNullOp: boolean
+  isInOp: boolean
+  dataType: DataType | undefined
+  entityName: string | undefined
+  fieldName: string | undefined
+  referenceEntity: string | undefined
+  register: UseFormRegister<FormValues>
+}) {
+  const name = `filters.${index}.value` as const
+  const binding = register(name)
+
+  if (isNullOp) {
+    return <Input disabled placeholder="—" />
+  }
+  if (isInOp) {
+    return <Input placeholder="comma, separated, values" {...binding} />
+  }
+  if (dataType === 'reference' && entityName && fieldName && referenceEntity) {
+    return <RefValueSelect entityName={entityName} fieldName={fieldName} bindingName={name} register={register} />
+  }
+  if (dataType === 'boolean') {
+    return (
+      <select className={SELECT_CLASS} {...binding}>
+        <option value="">— pick —</option>
+        <option value="true">true</option>
+        <option value="false">false</option>
+      </select>
+    )
+  }
+  if (dataType === 'date') {
+    return <Input type="date" {...binding} />
+  }
+  if (dataType === 'timestamptz') {
+    return <Input type="datetime-local" {...binding} />
+  }
+  if (dataType === 'integer' || dataType === 'bigint') {
+    return <Input type="number" step={1} {...binding} />
+  }
+  if (dataType === 'numeric') {
+    return <Input type="number" step="any" {...binding} />
+  }
+  if (dataType === 'jsonb') {
+    return <Textarea rows={2} placeholder='{"key":"value"}' className="font-mono text-xs" {...binding} />
+  }
+  return <Input placeholder={op === 'contains' ? 'substring' : 'value'} {...binding} />
+}
+
+function RefValueSelect({
+  entityName,
+  fieldName,
+  bindingName,
+  register,
+}: {
+  entityName: string
+  fieldName: string
+  bindingName: `filters.${number}.value`
+  register: UseFormRegister<FormValues>
+}) {
+  const { data, isLoading } = useFieldOptions(entityName, fieldName)
+  return (
+    <select className={SELECT_CLASS} {...register(bindingName)} disabled={isLoading}>
+      <option value="">{isLoading ? 'loading…' : '— pick —'}</option>
+      {(data ?? []).map((o) => (
+        <option key={o.ID} value={o.ID}>{o.Label}</option>
+      ))}
+    </select>
   )
 }
