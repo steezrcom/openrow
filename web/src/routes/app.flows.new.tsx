@@ -23,6 +23,7 @@ type FormValues = {
   event_insert: boolean
   event_update: boolean
   event_delete: boolean
+  cron: string
 }
 
 function NewFlowPage() {
@@ -40,6 +41,7 @@ function NewFlowPage() {
       name: '', description: '', goal: '', mode: 'dry_run',
       trigger_kind: 'manual', entity: '',
       event_insert: true, event_update: false, event_delete: false,
+      cron: '0 9 * * *',
     },
   })
   const triggerKind = watch('trigger_kind')
@@ -54,6 +56,9 @@ function NewFlowPage() {
         if (v.event_update) events.push('update')
         if (v.event_delete) events.push('delete')
         triggerConfig.events = events
+      }
+      if (v.trigger_kind === 'cron') {
+        triggerConfig.cron = v.cron
       }
       return api.createFlow({
         name: v.name,
@@ -136,8 +141,8 @@ function NewFlowPage() {
 
           <div className="space-y-2">
             <Label>{t('flows.trigger')}</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['manual', 'entity_event', 'webhook'] as FlowTriggerKind[]).map((k) => (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(['manual', 'entity_event', 'webhook', 'cron'] as FlowTriggerKind[]).map((k) => (
                 <label
                   key={k}
                   className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background p-3 hover:bg-accent"
@@ -184,6 +189,19 @@ function NewFlowPage() {
           {triggerKind === 'webhook' && (
             <div className="rounded-md border border-border bg-muted/10 p-3 text-xs text-muted-foreground">
               {t('flows.trigger.webhook.hint.create')}
+            </div>
+          )}
+
+          {triggerKind === 'cron' && (
+            <div className="space-y-2 rounded-md border border-border bg-muted/10 p-3">
+              <Label htmlFor="cron">{t('flows.trigger.cron.expression')}</Label>
+              <Input
+                id="cron"
+                {...register('cron', { required: triggerKind === 'cron' })}
+                placeholder="0 9 * * *"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">{t('flows.trigger.cron.hint.create')}</p>
             </div>
           )}
 

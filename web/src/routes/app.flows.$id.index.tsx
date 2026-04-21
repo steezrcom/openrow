@@ -194,6 +194,15 @@ function TriggerConfigBlock({ flow }: { flow: Flow }) {
       </div>
     )
   }
+  if (flow.trigger_kind === 'cron') {
+    const expr = (cfg.cron as string | undefined) ?? ''
+    return (
+      <div>
+        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('flows.trigger.cron.expression')}</h3>
+        <p className="mt-1 font-mono text-sm">{expr}</p>
+      </div>
+    )
+  }
   return null
 }
 
