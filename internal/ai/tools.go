@@ -577,6 +577,12 @@ func (a *Agent) BuildToolset(ctx context.Context, tenantID, pgSchema string) *To
 
 	a.addConnectorTools(ctx, tenantID, add)
 
+	for _, p := range a.providers {
+		for _, t := range p(ctx, tenantID, pgSchema) {
+			add(t)
+		}
+	}
+
 	return ts
 }
 

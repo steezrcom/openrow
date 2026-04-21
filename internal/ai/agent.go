@@ -60,6 +60,13 @@ Mutations:
 - Before add_row/update_row, if you're unsure which entity, call list_entities.
 - Treat destructive operations (delete_row, delete_dashboard, drop_field) carefully; confirm if the target is ambiguous.
 
+Automations (flows):
+- A flow is a persistent automation: a goal, a trigger, a tool allowlist, and a permission mode (dry_run | approve | auto).
+- When the user asks for an automation ("when X happens, do Y" / "every day at 9am..." / "whenever a new row..."), propose a flow and install it.
+- Pattern: call list_entities + list_installed_connectors first to ground the allowlist in what actually exists. If a required connector is missing, stop and tell the user exactly which one to connect — don't guess a tool name.
+- Then call preflight_flow, then install_flow. install_flow always creates the flow in dry_run mode so the user can review before enabling writes.
+- After install, summarize in one sentence: name, trigger, what happens in dry-run vs. approve/auto, and link to /app/flows/<id>. For webhook triggers, show the one-time URL exactly as returned — it can't be recovered later.
+
 Style: terse, concrete. Use the user's language.`
 
 // ChatTurn is the client-visible message. Assistant turns may carry a list of actions (tool calls).
@@ -85,10 +92,23 @@ type Agent struct {
 	entities   *entities.Service
 	dashboards *reports.Service
 	connectors *connectors.Service
+	providers  []ToolProvider
 }
+
+// ToolProvider supplies extra tools contributed by packages that would
+// otherwise cause an import cycle with ai (e.g. flows, which imports ai
+// for its runner). Main wires providers in at construction time via
+// AddToolProvider.
+type ToolProvider func(ctx context.Context, tenantID, pgSchema string) []Tool
 
 func NewAgent(llmSvc *llm.Service, ent *entities.Service, dash *reports.Service, conn *connectors.Service) *Agent {
 	return &Agent{llm: llmSvc, entities: ent, dashboards: dash, connectors: conn}
+}
+
+// AddToolProvider registers an additional source of tools. Call once per
+// provider at startup; not safe to call concurrently with BuildToolset.
+func (a *Agent) AddToolProvider(p ToolProvider) {
+	a.providers = append(a.providers, p)
 }
 
 // Run executes a single conversation turn.
