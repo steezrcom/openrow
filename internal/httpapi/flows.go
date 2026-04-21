@@ -64,7 +64,7 @@ func (s *Server) createFlow(w http.ResponseWriter, r *http.Request) {
 	if u != nil {
 		userID = u.ID
 	}
-	f, err := s.flows.Create(r.Context(), m.TenantID, flows.CreateFlowInput{
+	res, err := s.flows.Create(r.Context(), m.TenantID, flows.CreateFlowInput{
 		Name:          in.Name,
 		Description:   in.Description,
 		Goal:          in.Goal,
@@ -78,7 +78,44 @@ func (s *Server) createFlow(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"flow": f})
+	resp := map[string]any{"flow": res.Flow}
+	if res.WebhookTokenOnce != "" {
+		resp["webhook_url"] = webhookURL(r, m.TenantSlug, res.Flow.ID, res.WebhookTokenOnce)
+		resp["webhook_token_once"] = res.WebhookTokenOnce
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// rotateWebhookToken regenerates a flow's webhook token. Returns the new
+// plaintext — it won't be retrievable later.
+func (s *Server) rotateFlowWebhookToken(w http.ResponseWriter, r *http.Request) {
+	m, _ := auth.MembershipFromContext(r.Context())
+	flow, err := s.flows.Get(r.Context(), m.TenantID, r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	if flow.TriggerKind != flows.TriggerWebhook {
+		writeErr(w, http.StatusBadRequest, "flow is not webhook-triggered")
+		return
+	}
+	token, err := s.flows.RotateWebhookToken(r.Context(), m.TenantID, flow.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"webhook_url":        webhookURL(r, m.TenantSlug, flow.ID, token),
+		"webhook_token_once": token,
+	})
+}
+
+func webhookURL(r *http.Request, tenantSlug, flowID, token string) string {
+	scheme := "https"
+	if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") == "" {
+		scheme = "http"
+	}
+	return scheme + "://" + r.Host + "/webhooks/" + tenantSlug + "/" + flowID + "?token=" + token
 }
 
 func defaultMode(m flows.Mode) flows.Mode {
@@ -156,8 +193,8 @@ func (s *Server) deleteFlow(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// triggerFlow runs the flow synchronously. The HTTP request returns when
-// the run reaches a terminal or suspended state.
+// triggerFlow enqueues a manual run. The run executes on the dispatcher's
+// worker pool; the handler returns immediately so the UI can poll.
 func (s *Server) triggerFlow(w http.ResponseWriter, r *http.Request) {
 	m, _ := auth.MembershipFromContext(r.Context())
 	f, err := s.flows.Get(r.Context(), m.TenantID, r.PathValue("id"))
@@ -169,16 +206,16 @@ func (s *Server) triggerFlow(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "flow is disabled")
 		return
 	}
-	run, err := s.flowRunner.RunManual(r.Context(), f)
+	run, err := s.flowDispatcher.Dispatch(r.Context(), f, json.RawMessage(`{"kind":"manual"}`))
 	if err != nil {
 		if run != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"run": run, "error": err.Error()})
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"run": run, "error": err.Error()})
 			return
 		}
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeErr(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"run": run})
+	writeJSON(w, http.StatusAccepted, map[string]any{"run": run})
 }
 
 // --- runs ----------------------------------------------------------------

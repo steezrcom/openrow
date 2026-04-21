@@ -126,6 +126,7 @@ func (s *Service) InsertRow(ctx context.Context, schema string, ent *Entity, inp
 	if err := s.pool.QueryRow(ctx, q, params...).Scan(&id); err != nil {
 		return "", err
 	}
+	s.emitChange(ctx, ent.TenantID, ent.Name, "insert", id)
 	return id, nil
 }
 
@@ -212,6 +213,7 @@ func (s *Service) UpdateRow(ctx context.Context, schema string, ent *Entity, id 
 	if tag.RowsAffected() == 0 {
 		return pgx.ErrNoRows
 	}
+	s.emitChange(ctx, ent.TenantID, ent.Name, "update", id)
 	return nil
 }
 
@@ -229,6 +231,7 @@ func (s *Service) DeleteRow(ctx context.Context, schema string, ent *Entity, id 
 	if tag.RowsAffected() == 0 {
 		return pgx.ErrNoRows
 	}
+	s.emitChange(ctx, ent.TenantID, ent.Name, "delete", id)
 	return nil
 }
 

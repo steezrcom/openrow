@@ -33,11 +33,44 @@ type Field struct {
 }
 
 type Service struct {
-	pool *pgxpool.Pool
+	pool     *pgxpool.Pool
+	onChange ChangeHandler
 }
+
+// ChangeEvent is emitted after a successful row mutation. Consumers wire
+// this to downstream triggers (flows, webhooks, audit logs).
+type ChangeEvent struct {
+	TenantID   string
+	EntityName string
+	EventKind  string // "insert" | "update" | "delete"
+	RowID      string
+}
+
+// ChangeHandler is called synchronously after a successful row mutation.
+// Handlers must be fast and non-blocking (dispatch to a queue / channel);
+// long work will block the triggering HTTP request.
+type ChangeHandler func(ctx context.Context, e ChangeEvent)
 
 func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{pool: pool}
+}
+
+// SetChangeHandler registers the handler invoked after every row mutation.
+// Safe to call once at startup; not concurrent-safe after that.
+func (s *Service) SetChangeHandler(h ChangeHandler) {
+	s.onChange = h
+}
+
+func (s *Service) emitChange(ctx context.Context, tenantID, entityName, kind, rowID string) {
+	if s.onChange == nil {
+		return
+	}
+	s.onChange(ctx, ChangeEvent{
+		TenantID:   tenantID,
+		EntityName: entityName,
+		EventKind:  kind,
+		RowID:      rowID,
+	})
 }
 
 // Create persists the entity metadata and creates the underlying table atomically.

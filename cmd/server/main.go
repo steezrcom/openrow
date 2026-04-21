@@ -71,6 +71,14 @@ func run(log *slog.Logger) error {
 	agent := ai.NewAgent(llmSvc, entSvc, dashSvc)
 	flowSvc := flows.NewService(pool)
 	flowRunner := flows.NewRunner(flowSvc, llmSvc, agent, tenantSvc)
+	flowDispatcher := flows.NewInMemoryDispatcher(flowSvc, flowRunner, 4, 256, log)
+	flowDispatcher.Start()
+	defer flowDispatcher.Stop()
+
+	// Hook entity mutations → flow triggers. Handler is synchronous but
+	// fast: it only enqueues matched runs on the dispatcher.
+	eventRouter := flows.NewEntityEventRouter(flowSvc, flowDispatcher, log)
+	entSvc.SetChangeHandler(eventRouter.Handle)
 
 	api := httpapi.New(httpapi.Deps{
 		Log:            log,
@@ -88,6 +96,7 @@ func run(log *slog.Logger) error {
 		Connectors:     connectorSvc,
 		Flows:          flowSvc,
 		FlowRunner:     flowRunner,
+		FlowDispatcher: flowDispatcher,
 		Mailer:         &mailer.Stdout{Log: log},
 		AppURL:         getOr("APP_URL", "http://localhost:5173"),
 		SecureCookies:  strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true"),

@@ -36,18 +36,19 @@ const (
 	runnerSystemPrompt  = `You are an OpenRow automation. Follow the flow's goal, using the provided tools. Work autonomously: don't ask questions. When the goal is achieved or you can't proceed, stop making tool calls and summarize what you did in one short sentence. If a tool you need isn't available, stop and explain precisely which one is missing.`
 )
 
-// RunManual creates a new run for a manually-triggered flow and drives it
-// to completion or suspension. Returns the final Run state.
-func (r *Runner) RunManual(ctx context.Context, flow *Flow) (*Run, error) {
-	return r.Start(ctx, flow, json.RawMessage(`{"kind":"manual"}`))
-}
-
-// Start creates a run with the given trigger payload and executes it.
+// Start creates a run with the given trigger payload and drives it inline.
+// Prefer Drive if you already have a Run row (e.g. the dispatcher created
+// it up front so the HTTP handler could return its ID immediately).
 func (r *Runner) Start(ctx context.Context, flow *Flow, triggerPayload json.RawMessage) (*Run, error) {
 	run, err := r.svc.CreateRun(ctx, flow, triggerPayload)
 	if err != nil {
 		return nil, err
 	}
+	return r.drive(ctx, flow, run, nil)
+}
+
+// Drive executes an already-created run. Used by the dispatcher's workers.
+func (r *Runner) Drive(ctx context.Context, flow *Flow, run *Run) (*Run, error) {
 	return r.drive(ctx, flow, run, nil)
 }
 

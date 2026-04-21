@@ -1,9 +1,9 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { ChevronRight, Play, Trash2 } from 'lucide-react'
-import { api, ApiError, type FlowMode, type FlowRunStatus } from '@/lib/api'
-import { Button, Card } from '@/components/ui'
+import { ChevronRight, Copy, Play, RefreshCw, Trash2 } from 'lucide-react'
+import { api, ApiError, type Flow, type FlowMode, type FlowRunStatus } from '@/lib/api'
+import { Button, Card, Input } from '@/components/ui'
 import { ModeBadge, TriggerBadge } from './app.flows'
 import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
@@ -99,6 +99,8 @@ function FlowDetailPage() {
             <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('flows.goal')}</h3>
             <p className="mt-1 whitespace-pre-wrap text-sm">{f.goal}</p>
           </div>
+          <TriggerConfigBlock flow={f} />
+          {f.trigger_kind === 'webhook' && <WebhookBlock flowId={f.id} />}
           <div>
             <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('flows.mode')}</h3>
             <div className="mt-2 flex flex-wrap gap-1">
@@ -164,6 +166,64 @@ function FlowDetailPage() {
           </div>
         </Card>
       </div>
+    </div>
+  )
+}
+
+function TriggerConfigBlock({ flow }: { flow: Flow }) {
+  const t = useT()
+  const cfg = flow.trigger_config
+  if (flow.trigger_kind === 'entity_event') {
+    const entity = cfg.entity as string | undefined
+    const events = Array.isArray(cfg.events) ? (cfg.events as string[]) : ['insert']
+    return (
+      <div>
+        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('flows.trigger')}</h3>
+        <p className="mt-1 text-sm">
+          <span className="font-mono">{entity ?? '?'}</span>
+          <span className="text-muted-foreground"> · {events.join(', ')}</span>
+        </p>
+      </div>
+    )
+  }
+  return null
+}
+
+function WebhookBlock({ flowId }: { flowId: string }) {
+  const t = useT()
+  const [info, setInfo] = useState<{ url: string; token: string } | null>(null)
+  const rotate = useMutation({
+    mutationFn: () => api.rotateFlowWebhookToken(flowId),
+    onSuccess: (r) => setInfo({ url: r.webhook_url, token: r.webhook_token_once }),
+  })
+  return (
+    <div>
+      <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Webhook</h3>
+      {info ? (
+        <div className="mt-1 space-y-2">
+          <div className="flex items-center gap-2">
+            <Input readOnly value={info.url} onFocus={(e) => e.currentTarget.select()} />
+            <Button type="button" variant="ghost" onClick={() => navigator.clipboard.writeText(info.url)}>
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">{t('flows.webhook.rotatedHint')}</p>
+        </div>
+      ) : (
+        <div className="mt-1">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              if (confirm(t('flows.webhook.rotateConfirm'))) rotate.mutate()
+            }}
+            disabled={rotate.isPending}
+          >
+            <RefreshCw className="mr-1 h-3.5 w-3.5" />
+            {t('flows.webhook.rotate')}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

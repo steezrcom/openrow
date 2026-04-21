@@ -53,7 +53,14 @@ func validateTrigger(t TriggerKind) error {
 	return ErrInvalidTrigger
 }
 
-func (s *Service) Create(ctx context.Context, tenantID string, in CreateFlowInput) (*Flow, error) {
+// CreateResult bundles the newly-created flow with any one-time secrets
+// that must be shown to the caller right away (e.g. webhook token).
+type CreateResult struct {
+	Flow              *Flow
+	WebhookTokenOnce  string // only set when TriggerKind == webhook; plaintext is unrecoverable after this call
+}
+
+func (s *Service) Create(ctx context.Context, tenantID string, in CreateFlowInput) (*CreateResult, error) {
 	if in.Name == "" {
 		return nil, errors.New("name is required")
 	}
@@ -79,18 +86,29 @@ func (s *Service) Create(ctx context.Context, tenantID string, in CreateFlowInpu
 		createdBy = &in.CreatedByUser
 	}
 
+	var (
+		tokenPlaintext string
+		tokenHash      []byte
+	)
+	if in.TriggerKind == TriggerWebhook {
+		tokenPlaintext, tokenHash, err = NewWebhookToken()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var f Flow
 	var triggerCfgOut, allowlistOut []byte
 	err = s.pool.QueryRow(ctx, `
 		INSERT INTO openrow.flows
 			(tenant_id, name, description, goal, trigger_kind, trigger_config,
-			 tool_allowlist, mode, enabled, created_by_user_id)
-		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, true, $9)
+			 tool_allowlist, mode, enabled, created_by_user_id, webhook_token_hash)
+		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, true, $9, $10)
 		RETURNING id, tenant_id, name, COALESCE(description, ''), goal, trigger_kind,
 		          trigger_config, tool_allowlist, mode, enabled, created_by_user_id,
 		          created_at, updated_at`,
 		tenantID, in.Name, in.Description, in.Goal,
-		string(in.TriggerKind), triggerCfg, allowlist, string(in.Mode), createdBy,
+		string(in.TriggerKind), triggerCfg, allowlist, string(in.Mode), createdBy, tokenHash,
 	).Scan(&f.ID, &f.TenantID, &f.Name, &f.Description, &f.Goal, &f.TriggerKind,
 		&triggerCfgOut, &allowlistOut, &f.Mode, &f.Enabled, &f.CreatedByUserID,
 		&f.CreatedAt, &f.UpdatedAt)
@@ -101,7 +119,7 @@ func (s *Service) Create(ctx context.Context, tenantID string, in CreateFlowInpu
 	if err := json.Unmarshal(allowlistOut, &f.ToolAllowlist); err != nil {
 		return nil, err
 	}
-	return &f, nil
+	return &CreateResult{Flow: &f, WebhookTokenOnce: tokenPlaintext}, nil
 }
 
 func (s *Service) List(ctx context.Context, tenantID string) ([]Flow, error) {
@@ -240,6 +258,46 @@ func (s *Service) Delete(ctx context.Context, tenantID, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// ListEntityEventMatches returns enabled flows whose trigger is
+// entity_event on the given (tenant, entity, event). Event kind is matched
+// against trigger_config.events (jsonb array); if the array is missing,
+// "insert" is the default match — the overwhelmingly common case.
+func (s *Service) ListEntityEventMatches(ctx context.Context, tenantID, entity, eventKind string) ([]Flow, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, tenant_id, name, COALESCE(description, ''), goal, trigger_kind,
+		       trigger_config, tool_allowlist, mode, enabled, created_by_user_id,
+		       created_at, updated_at
+		FROM openrow.flows
+		WHERE tenant_id = $1
+		  AND enabled = true
+		  AND trigger_kind = 'entity_event'
+		  AND trigger_config->>'entity' = $2
+		  AND (
+		    (NOT (trigger_config ? 'events') AND $3 = 'insert')
+		    OR trigger_config->'events' @> to_jsonb($3::text)
+		  )`, tenantID, entity, eventKind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Flow, 0)
+	for rows.Next() {
+		var f Flow
+		var triggerCfg, allowlist []byte
+		if err := rows.Scan(&f.ID, &f.TenantID, &f.Name, &f.Description, &f.Goal, &f.TriggerKind,
+			&triggerCfg, &allowlist, &f.Mode, &f.Enabled, &f.CreatedByUserID,
+			&f.CreatedAt, &f.UpdatedAt); err != nil {
+			return nil, err
+		}
+		f.TriggerConfig = triggerCfg
+		if err := json.Unmarshal(allowlist, &f.ToolAllowlist); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
 }
 
 // --- Runs ----------------------------------------------------------------
