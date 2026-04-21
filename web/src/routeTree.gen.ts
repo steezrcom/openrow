@@ -17,6 +17,7 @@ import { Route as ForgotRouteImport } from './routes/forgot'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
+import { Route as AppTimeRouteImport } from './routes/app.time'
 import { Route as AppEntitiesNameRouteImport } from './routes/app.entities.$name'
 import { Route as AppDashboardsSlugRouteImport } from './routes/app.dashboards.$slug'
 
@@ -60,6 +61,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTimeRoute = AppTimeRouteImport.update({
+  id: '/time',
+  path: '/time',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppEntitiesNameRoute = AppEntitiesNameRouteImport.update({
   id: '/entities/$name',
   path: '/entities/$name',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/orgs': typeof OrgsRoute
   '/reset': typeof ResetRoute
   '/signup': typeof SignupRoute
+  '/app/time': typeof AppTimeRoute
   '/app/': typeof AppIndexRoute
   '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/orgs': typeof OrgsRoute
   '/reset': typeof ResetRoute
   '/signup': typeof SignupRoute
+  '/app/time': typeof AppTimeRoute
   '/app': typeof AppIndexRoute
   '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   '/orgs': typeof OrgsRoute
   '/reset': typeof ResetRoute
   '/signup': typeof SignupRoute
+  '/app/time': typeof AppTimeRoute
   '/app/': typeof AppIndexRoute
   '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
     | '/orgs'
     | '/reset'
     | '/signup'
+    | '/app/time'
     | '/app/'
     | '/app/dashboards/$slug'
     | '/app/entities/$name'
@@ -128,6 +138,7 @@ export interface FileRouteTypes {
     | '/orgs'
     | '/reset'
     | '/signup'
+    | '/app/time'
     | '/app'
     | '/app/dashboards/$slug'
     | '/app/entities/$name'
@@ -140,6 +151,7 @@ export interface FileRouteTypes {
     | '/orgs'
     | '/reset'
     | '/signup'
+    | '/app/time'
     | '/app/'
     | '/app/dashboards/$slug'
     | '/app/entities/$name'
@@ -213,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/time': {
+      id: '/app/time'
+      path: '/time'
+      fullPath: '/app/time'
+      preLoaderRoute: typeof AppTimeRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/entities/$name': {
       id: '/app/entities/$name'
       path: '/entities/$name'
@@ -231,12 +250,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppTimeRoute: typeof AppTimeRoute
   AppIndexRoute: typeof AppIndexRoute
   AppDashboardsSlugRoute: typeof AppDashboardsSlugRoute
   AppEntitiesNameRoute: typeof AppEntitiesNameRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppTimeRoute: AppTimeRoute,
   AppIndexRoute: AppIndexRoute,
   AppDashboardsSlugRoute: AppDashboardsSlugRoute,
   AppEntitiesNameRoute: AppEntitiesNameRoute,

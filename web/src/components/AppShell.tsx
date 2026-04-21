@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react'
 import {
   Building2,
   ChevronsUpDown,
+  Clock,
   Database,
   LayoutDashboard,
   LogOut,
@@ -19,6 +20,7 @@ import { useDashboards } from '@/hooks/useDashboards'
 import { cn } from '@/lib/utils'
 import { ChatPanel } from '@/components/ChatPanel'
 import { CreateDashboardModal } from '@/components/CreateDashboardModal'
+import { TimerWidget } from '@/components/TimerWidget'
 
 export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe()
@@ -93,6 +95,13 @@ function Sidebar({
       <nav className="mt-6 flex-1 overflow-y-auto px-3 pb-4">
         <NavItem to="/app" icon={<Database className="h-4 w-4" />} active={isDashboardActive}>
           Home
+        </NavItem>
+        <NavItem
+          to="/app/time"
+          icon={<Clock className="h-4 w-4" />}
+          active={Boolean(match({ to: '/app/time' }))}
+        >
+          Timesheet
         </NavItem>
 
         <div className="mt-5 flex items-center justify-between px-3 pb-1">
@@ -182,6 +191,9 @@ function Sidebar({
       </nav>
 
       <CreateDashboardModal open={newDashboardOpen} onClose={() => setNewDashboardOpen(false)} />
+      <div className="border-t border-border px-3 py-2">
+        <TimerWidget />
+      </div>
       <div className="border-t border-border p-3">
         <div className="flex items-center gap-2 px-2 py-1.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-primary">
