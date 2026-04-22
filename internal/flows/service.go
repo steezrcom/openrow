@@ -173,44 +173,20 @@ func (s *Service) List(ctx context.Context, tenantID string) ([]Flow, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]Flow, 0)
-	for rows.Next() {
-		var f Flow
-		var triggerCfg, allowlist []byte
-		if err := rows.Scan(&f.ID, &f.TenantID, &f.Name, &f.Description, &f.Goal, &f.TriggerKind,
-			&triggerCfg, &allowlist, &f.Mode, &f.Enabled, &f.CreatedByUserID,
-			&f.CreatedAt, &f.UpdatedAt); err != nil {
-			return nil, err
-		}
-		f.TriggerConfig = triggerCfg
-		if err := json.Unmarshal(allowlist, &f.ToolAllowlist); err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
+	return collectFlows(rows)
 }
 
 func (s *Service) Get(ctx context.Context, tenantID, id string) (*Flow, error) {
-	var f Flow
-	var triggerCfg, allowlist []byte
-	err := s.pool.QueryRow(ctx, `
+	f, err := scanFlow(s.pool.QueryRow(ctx, `
 		SELECT id, tenant_id, name, COALESCE(description, ''), goal, trigger_kind,
 		       trigger_config, tool_allowlist, mode, enabled, created_by_user_id,
 		       created_at, updated_at
 		FROM openrow.flows
-		WHERE tenant_id = $1 AND id = $2`, tenantID, id).
-		Scan(&f.ID, &f.TenantID, &f.Name, &f.Description, &f.Goal, &f.TriggerKind,
-			&triggerCfg, &allowlist, &f.Mode, &f.Enabled, &f.CreatedByUserID,
-			&f.CreatedAt, &f.UpdatedAt)
+		WHERE tenant_id = $1 AND id = $2`, tenantID, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
-		return nil, err
-	}
-	f.TriggerConfig = triggerCfg
-	if err := json.Unmarshal(allowlist, &f.ToolAllowlist); err != nil {
 		return nil, err
 	}
 	return &f, nil
@@ -338,22 +314,7 @@ func (s *Service) ListEntityEventMatches(ctx context.Context, tenantID, entity, 
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]Flow, 0)
-	for rows.Next() {
-		var f Flow
-		var triggerCfg, allowlist []byte
-		if err := rows.Scan(&f.ID, &f.TenantID, &f.Name, &f.Description, &f.Goal, &f.TriggerKind,
-			&triggerCfg, &allowlist, &f.Mode, &f.Enabled, &f.CreatedByUserID,
-			&f.CreatedAt, &f.UpdatedAt); err != nil {
-			return nil, err
-		}
-		f.TriggerConfig = triggerCfg
-		if err := json.Unmarshal(allowlist, &f.ToolAllowlist); err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
+	return collectFlows(rows)
 }
 
 // dueCronFlows returns enabled cron-triggered flows whose next_run_at has
@@ -372,22 +333,7 @@ func (s *Service) dueCronFlows(ctx context.Context) ([]Flow, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]Flow, 0)
-	for rows.Next() {
-		var f Flow
-		var triggerCfg, allowlist []byte
-		if err := rows.Scan(&f.ID, &f.TenantID, &f.Name, &f.Description, &f.Goal, &f.TriggerKind,
-			&triggerCfg, &allowlist, &f.Mode, &f.Enabled, &f.CreatedByUserID,
-			&f.CreatedAt, &f.UpdatedAt); err != nil {
-			return nil, err
-		}
-		f.TriggerConfig = triggerCfg
-		if err := json.Unmarshal(allowlist, &f.ToolAllowlist); err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
+	return collectFlows(rows)
 }
 
 // setNextRun updates a flow's scheduled next run time. Called by the
@@ -398,6 +344,36 @@ func (s *Service) setNextRun(ctx context.Context, flowID string, at time.Time) e
 		`UPDATE openrow.flows SET next_run_at = $1 WHERE id = $2`,
 		at.UTC(), flowID)
 	return err
+}
+
+// scanFlow reads one Flow from a pgx row/rows scanner. The SELECT column
+// order is pinned across callers; keep the list in every query aligned
+// with the Scan() here.
+func scanFlow(sc interface{ Scan(...any) error }) (Flow, error) {
+	var f Flow
+	var triggerCfg, allowlist []byte
+	if err := sc.Scan(&f.ID, &f.TenantID, &f.Name, &f.Description, &f.Goal, &f.TriggerKind,
+		&triggerCfg, &allowlist, &f.Mode, &f.Enabled, &f.CreatedByUserID,
+		&f.CreatedAt, &f.UpdatedAt); err != nil {
+		return Flow{}, err
+	}
+	f.TriggerConfig = triggerCfg
+	if err := json.Unmarshal(allowlist, &f.ToolAllowlist); err != nil {
+		return Flow{}, err
+	}
+	return f, nil
+}
+
+func collectFlows(rows pgx.Rows) ([]Flow, error) {
+	out := make([]Flow, 0)
+	for rows.Next() {
+		f, err := scanFlow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
 }
 
 // --- Runs ----------------------------------------------------------------

@@ -9,7 +9,7 @@ import {
   type UseFormSetValue,
 } from 'react-hook-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, X } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import {
   api,
   ApiError,
@@ -23,7 +23,7 @@ import {
 import { useEntities } from '@/hooks/useEntities'
 import { useEntityDetail } from '@/hooks/useEntityDetail'
 import { useFieldOptions } from '@/hooks/useFieldOptions'
-import { Button, Input, Label, Textarea } from '@/components/ui'
+import { Button, type Chip, ChipRow, ErrorAlert, FormActions, Input, Label, Textarea } from '@/components/ui'
 import { Drawer } from '@/components/Drawer'
 import { useState } from 'react'
 
@@ -554,13 +554,9 @@ export function ReportEditor({
           )}
         </Section>
 
-        {error && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {error}
-          </div>
-        )}
+        {error && <ErrorAlert>{error}</ErrorAlert>}
 
-        <div className="sticky bottom-0 -mx-6 flex items-center gap-2 border-t border-border bg-card/95 px-6 py-3 backdrop-blur">
+        <FormActions className="-mx-6 px-6">
           <Button type="submit" disabled={isSubmitting || mut.isPending}>
             {mut.isPending
               ? 'Saving…'
@@ -571,7 +567,7 @@ export function ReportEditor({
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-        </div>
+        </FormActions>
       </form>
     </Drawer>
   )
@@ -849,36 +845,19 @@ function RefMultiSelect({
     onChange(joinCSV(selectedIds.filter((x) => x !== id)))
   }
 
+  const chips: Chip[] = selected.map((o) => ({
+    id: o.ID,
+    label: o.Label,
+    onRemove: () => remove(o.ID),
+    tone: 'primary',
+  }))
+
   return (
-    <div ref={ref} className="relative">
-      <div
-        className="flex min-h-[40px] flex-wrap items-center gap-1 rounded-md border border-input bg-background p-1.5 text-sm focus-within:ring-2 focus-within:ring-ring"
-        onClick={() => setOpen(true)}
-      >
-        {selected.map((o) => (
-          <span
-            key={o.ID}
-            className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs text-primary"
-          >
-            {o.Label}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                remove(o.ID)
-              }}
-              className="-mr-1 rounded p-0.5 hover:bg-primary/20"
-              aria-label={`Remove ${o.Label}`}
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
+    <div className="relative">
+      <ChipRow chips={chips} onClick={() => setOpen(true)} containerRef={ref}>
         <input
           className="flex-1 min-w-[80px] bg-transparent outline-none"
-          placeholder={
-            isLoading ? 'loading…' : selected.length ? '' : 'type to filter…'
-          }
+          placeholder={isLoading ? 'loading…' : selected.length ? '' : 'type to filter…'}
           value={search}
           onChange={(e) => {
             setSearch(e.target.value)
@@ -896,12 +875,10 @@ function RefMultiSelect({
             if (e.key === 'Escape') setOpen(false)
           }}
         />
-      </div>
+      </ChipRow>
       {open && (filtered.length > 0 || isLoading) && (
         <div className="absolute left-0 right-0 z-30 mt-1 max-h-52 overflow-auto rounded-md border border-border bg-card shadow-lg">
-          {isLoading && (
-            <div className="px-3 py-2 text-xs text-muted-foreground">loading…</div>
-          )}
+          {isLoading && <div className="px-3 py-2 text-xs text-muted-foreground">loading…</div>}
           {filtered.map((o) => (
             <button
               key={o.ID}
@@ -943,24 +920,14 @@ function TagsInput({
     onChange(joinCSV(tags.filter((x) => x !== t)))
   }
 
+  const chips: Chip[] = tags.map((t) => ({
+    id: t,
+    label: t,
+    onRemove: () => removeTag(t),
+  }))
+
   return (
-    <div className="flex min-h-[40px] flex-wrap items-center gap-1 rounded-md border border-input bg-background p-1.5 text-sm focus-within:ring-2 focus-within:ring-ring">
-      {tags.map((t) => (
-        <span
-          key={t}
-          className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs"
-        >
-          {t}
-          <button
-            type="button"
-            onClick={() => removeTag(t)}
-            className="-mr-1 rounded p-0.5 hover:bg-accent"
-            aria-label={`Remove ${t}`}
-          >
-            <X className="h-3 w-3" />
-          </button>
-        </span>
-      ))}
+    <ChipRow chips={chips}>
       <input
         className="flex-1 min-w-[80px] bg-transparent outline-none"
         placeholder={placeholder}
@@ -979,6 +946,6 @@ function TagsInput({
           if (input.trim()) addTag(input)
         }}
       />
-    </div>
+    </ChipRow>
   )
 }
