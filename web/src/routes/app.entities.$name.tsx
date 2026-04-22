@@ -9,7 +9,6 @@ import {
   ChevronsUpDown,
   ArrowDown,
   ArrowUp,
-  Pencil,
   Plus,
   Search,
   Trash2,
@@ -25,11 +24,13 @@ import {
 } from '@/lib/api'
 import { Button, Card, Input, Pill } from '@/components/ui'
 import { Drawer } from '@/components/Drawer'
-import { FieldInput } from '@/components/FieldInput'
 import { ViewTabs } from '@/components/entities/ViewTabs'
 import { CardsView } from '@/components/entities/CardsView'
 import { KanbanView } from '@/components/entities/KanbanView'
 import { NewViewModal } from '@/components/entities/NewViewModal'
+import { CreateForm } from '@/components/entities/CreateForm'
+import { ViewRecord } from '@/components/entities/ViewRecord'
+import { EditForm } from '@/components/entities/EditForm'
 import { buildRefLookup, formatCell, formatTimestampRelative } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -676,209 +677,6 @@ function RecordDrawer({
   return null
 }
 
-
-function CreateForm({
-  entity,
-  refOptions,
-  onDone,
-}: {
-  entity: Entity
-  refOptions: Record<string, RefOption[]>
-  onDone: () => void
-}) {
-  const qc = useQueryClient()
-  const { register, handleSubmit, formState: { isSubmitting } } =
-    useForm<Record<string, string>>()
-  const [error, setError] = useState<string | null>(null)
-
-  const mut = useMutation({
-    mutationFn: (values: Record<string, string>) => api.createRow(entity.name, values),
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['rows', entity.name] })
-      onDone()
-    },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'failed'),
-  })
-
-  return (
-    <form
-      id="create-record-form"
-      className="space-y-5"
-      onSubmit={handleSubmit((v) => {
-        const filtered = Object.fromEntries(Object.entries(v).filter(([, val]) => val !== ''))
-        mut.mutate(filtered)
-      })}
-    >
-      {entity.fields.map((f) => (
-        <FieldInput
-          key={f.id}
-          field={f}
-          register={register}
-          refOptions={refOptions[f.name] ?? []}
-        />
-      ))}
-      {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {error}
-        </div>
-      )}
-      <div className="sticky bottom-0 flex items-center gap-2 border-t border-border bg-card/95 px-0 py-3 backdrop-blur">
-        <Button type="submit" disabled={isSubmitting || mut.isPending}>
-          {mut.isPending ? 'Saving…' : 'Save record'}
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-function ViewRecord({
-  row,
-  entity,
-  refLookup,
-  onEdit,
-}: {
-  row: Record<string, unknown>
-  entity: Entity
-  refLookup: (entityName: string, id: string) => string | null
-  onEdit: () => void
-}) {
-  return (
-    <div>
-      <div className="mb-4 flex justify-end">
-        <Button variant="ghost" onClick={onEdit}>
-          <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
-        </Button>
-      </div>
-      <dl className="space-y-4">
-      {entity.fields.map((f) => {
-        const value = row[f.name]
-        return (
-          <div key={f.id} className="grid grid-cols-[140px_1fr] gap-4">
-            <dt className="truncate text-xs text-muted-foreground">{f.display_name}</dt>
-            <dd className="break-words text-sm">
-              {value == null || value === '' ? (
-                <span className="text-muted-foreground/40">—</span>
-              ) : f.data_type === 'boolean' ? (
-                value ? 'yes' : 'no'
-              ) : f.data_type === 'reference' && typeof value === 'string' && f.reference_entity ? (
-                <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                  {refLookup(f.reference_entity, value) ?? value}
-                </span>
-              ) : f.data_type === 'jsonb' ? (
-                <pre className="whitespace-pre-wrap rounded-md bg-muted/40 p-2 font-mono text-[11px]">
-                  {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
-                </pre>
-              ) : (
-                formatCell(value, f, refLookup)
-              )}
-            </dd>
-          </div>
-        )
-      })}
-      <div className="grid grid-cols-[140px_1fr] gap-4 border-t border-border pt-4 text-xs text-muted-foreground">
-        <dt>id</dt>
-        <dd className="break-all font-mono">{String(row.id ?? '')}</dd>
-        <dt>created</dt>
-        <dd>{formatCell(row.created_at, undefined, refLookup)}</dd>
-        <dt>updated</dt>
-        <dd>{formatCell(row.updated_at, undefined, refLookup)}</dd>
-      </div>
-    </dl>
-    </div>
-  )
-}
-
-function EditForm({
-  entity,
-  refOptions,
-  row,
-  onDone,
-}: {
-  entity: Entity
-  refOptions: Record<string, RefOption[]>
-  row: Record<string, unknown>
-  onDone: () => void
-}) {
-  const qc = useQueryClient()
-  const defaults = useMemo(() => rowToFormValues(entity, row), [entity, row])
-  const { register, handleSubmit, formState: { isSubmitting } } =
-    useForm<Record<string, string>>({ defaultValues: defaults })
-  const [error, setError] = useState<string | null>(null)
-
-  const id = String(row.id ?? '')
-  const mut = useMutation({
-    mutationFn: (values: Record<string, string>) => api.updateRow(entity.name, id, values),
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['rows', entity.name] })
-      onDone()
-    },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'failed'),
-  })
-
-  return (
-    <form
-      className="space-y-5"
-      onSubmit={handleSubmit((v) => {
-        mut.mutate(v)
-      })}
-    >
-      {entity.fields.map((f) => (
-        <FieldInput
-          key={f.id}
-          field={f}
-          register={register}
-          refOptions={refOptions[f.name] ?? []}
-        />
-      ))}
-      {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {error}
-        </div>
-      )}
-      <div className="sticky bottom-0 flex items-center gap-2 border-t border-border bg-card/95 py-3 backdrop-blur">
-        <Button type="submit" disabled={isSubmitting || mut.isPending}>
-          {mut.isPending ? 'Saving…' : 'Save changes'}
-        </Button>
-        <Button variant="ghost" type="button" onClick={onDone}>
-          Cancel
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-function rowToFormValues(entity: Entity, row: Record<string, unknown>): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const f of entity.fields) {
-    const v = row[f.name]
-    if (v === null || v === undefined) {
-      out[f.name] = ''
-      continue
-    }
-    if (f.data_type === 'boolean') {
-      out[f.name] = v ? 'on' : ''
-      continue
-    }
-    if (f.data_type === 'timestamptz' && typeof v === 'string') {
-      const d = new Date(v)
-      if (!isNaN(d.getTime())) {
-        out[f.name] = toDatetimeLocal(d)
-        continue
-      }
-    }
-    if (f.data_type === 'jsonb') {
-      out[f.name] = typeof v === 'string' ? v : JSON.stringify(v)
-      continue
-    }
-    out[f.name] = String(v)
-  }
-  return out
-}
-
-function toDatetimeLocal(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
 
 function SortableTH({
   label,
