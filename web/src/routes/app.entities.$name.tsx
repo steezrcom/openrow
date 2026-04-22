@@ -19,12 +19,17 @@ import {
   api,
   ApiError,
   type Entity,
+  type EntityView,
   type Field,
   type RefOption,
 } from '@/lib/api'
 import { Button, Card, Input, Pill } from '@/components/ui'
 import { Drawer } from '@/components/Drawer'
 import { FieldInput } from '@/components/FieldInput'
+import { ViewTabs } from '@/components/entities/ViewTabs'
+import { CardsView } from '@/components/entities/CardsView'
+import { KanbanView } from '@/components/entities/KanbanView'
+import { NewViewModal } from '@/components/entities/NewViewModal'
 import { buildRefLookup, formatCell, formatTimestampRelative } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -32,6 +37,7 @@ const searchSchema = z.object({
   sort: z.string().optional(),
   dir: z.enum(['asc', 'desc']).optional(),
   page: z.number().int().min(1).optional(),
+  view: z.string().optional(),
 })
 
 export const Route = createFileRoute('/app/entities/$name')({
@@ -59,9 +65,20 @@ function EntityDetail() {
     queryKey: ['rows', name, sort ?? '', dir ?? '', page],
     queryFn: () => api.listRows(name, { sort, dir, page, limit: PAGE_SIZE }),
   })
+  const views = useQuery({
+    queryKey: ['views', name],
+    queryFn: () => api.listViews(name),
+  })
 
   const [mode, setMode] = useState<Mode>({ kind: 'closed' })
   const [search, setSearch] = useState('')
+  const [newViewOpen, setNewViewOpen] = useState(false)
+
+  // "table" is the implicit default — no row in entity_views, no id.
+  const activeView: EntityView | null = useMemo(() => {
+    if (!searchParams.view || searchParams.view === 'table') return null
+    return (views.data ?? []).find((v) => v.id === searchParams.view) ?? null
+  }, [searchParams.view, views.data])
 
   function setSort(field: string) {
     let nextDir: 'asc' | 'desc' | undefined
@@ -128,21 +145,57 @@ function EntityDetail() {
         rowCount={total}
         onAdd={() => setMode({ kind: 'create' })}
       />
+      <ViewTabs
+        views={views.data ?? []}
+        activeId={activeView?.id ?? 'table'}
+        onSelect={(id) =>
+          navigate({ search: (prev) => ({ ...prev, view: id === 'table' ? undefined : id, page: 1 }) })
+        }
+        onNew={() => setNewViewOpen(true)}
+      />
       <Toolbar search={search} onSearch={setSearch} filtered={filteredRows.length} total={allRows.length} />
       <div className="flex-1 overflow-auto">
-        <RowsTable
-          entity={entity}
-          rows={filteredRows}
-          refLookup={refLookup}
-          sort={sort}
-          dir={dir}
-          onSort={setSort}
-          onOpen={(row) => setMode({ kind: 'view', row })}
-        />
+        {activeView?.view_type === 'cards' ? (
+          <CardsView
+            entity={entity}
+            rows={filteredRows}
+            refLookup={refLookup}
+            config={activeView.config}
+            onOpen={(row) => setMode({ kind: 'view', row })}
+          />
+        ) : activeView?.view_type === 'kanban' ? (
+          <KanbanView
+            entity={entity}
+            rows={filteredRows}
+            refLookup={refLookup}
+            config={activeView.config}
+            onOpen={(row) => setMode({ kind: 'view', row })}
+          />
+        ) : (
+          <RowsTable
+            entity={entity}
+            rows={filteredRows}
+            refLookup={refLookup}
+            sort={sort}
+            dir={dir}
+            onSort={setSort}
+            onOpen={(row) => setMode({ kind: 'view', row })}
+          />
+        )}
       </div>
-      {totalPages > 1 && (
+      {!activeView && totalPages > 1 && (
         <Pagination page={page} totalPages={totalPages} total={total} onPage={setPage} />
       )}
+
+      <NewViewModal
+        open={newViewOpen}
+        entity={entity}
+        onClose={() => setNewViewOpen(false)}
+        onCreated={(v) => {
+          setNewViewOpen(false)
+          navigate({ search: (prev) => ({ ...prev, view: v.id, page: 1 }) })
+        }}
+      />
 
       <RecordDrawer
         open={mode.kind !== 'closed'}
