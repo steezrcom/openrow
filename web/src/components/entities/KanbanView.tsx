@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   useDroppable,
   useDraggable,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core'
 import { api, type Entity, type Field } from '@/lib/api'
 import { formatCell } from '@/lib/format'
@@ -87,6 +89,8 @@ export function KanbanView({
   }, [groupOptions, groupField, refLookup])
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const activeRow = activeId ? rows.find((r) => String(r.id) === activeId) ?? null : null
 
   if (!groupField) {
     return (
@@ -96,7 +100,12 @@ export function KanbanView({
     )
   }
 
+  function onDragStart(e: DragStartEvent) {
+    setActiveId(String(e.active.id))
+  }
+
   function onDragEnd(e: DragEndEvent) {
+    setActiveId(null)
     const rowId = String(e.active.id)
     const destKey = e.over ? String(e.over.id) : ''
     if (!destKey || destKey === '') return
@@ -106,7 +115,7 @@ export function KanbanView({
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
       <div className="flex h-full gap-3 overflow-x-auto p-6">
         {columns.map((col) => (
           <Column
@@ -121,6 +130,20 @@ export function KanbanView({
           />
         ))}
       </div>
+      {/* DragOverlay portals out of the columns' stacking contexts, so
+          the card visibly floats above columns instead of tucking behind
+          a neighbour. Also gives us pointer-follow motion for free. */}
+      <DragOverlay dropAnimation={null}>
+        {activeRow && (
+          <CardContent
+            row={activeRow}
+            titleField={titleField}
+            summaryFields={summaryFields}
+            refLookup={refLookup}
+            elevated
+          />
+        )}
+      </DragOverlay>
     </DndContext>
   )
 }
@@ -187,26 +210,47 @@ function DraggableCard({
   onOpen: (row: Row) => void
 }) {
   const id = String(row.id)
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id })
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id })
   return (
     <div
       ref={setNodeRef}
-      style={style}
       {...attributes}
       {...listeners}
       onClick={(e) => {
-        // dnd-kit fires click through despite drag activation constraint —
-        // suppress clicks that follow a drag by checking movement on the
-        // event's type. For simplicity, open on click when not dragging.
         if (!isDragging) onOpen(row)
         e.stopPropagation()
       }}
+      className={cn('cursor-grab', isDragging && 'opacity-40')}
+    >
+      <CardContent
+        row={row}
+        titleField={titleField}
+        summaryFields={summaryFields}
+        refLookup={refLookup}
+      />
+    </div>
+  )
+}
+
+function CardContent({
+  row,
+  titleField,
+  summaryFields,
+  refLookup,
+  elevated,
+}: {
+  row: Row
+  titleField: Field | null
+  summaryFields: Field[]
+  refLookup: (entityName: string, id: string) => string | null
+  elevated?: boolean
+}) {
+  const id = String(row.id)
+  return (
+    <div
       className={cn(
-        'cursor-grab rounded-md border border-border bg-card p-3 text-left shadow-sm',
-        isDragging && 'opacity-60'
+        'rounded-md border border-border bg-card p-3 text-left shadow-sm',
+        elevated && 'cursor-grabbing shadow-xl ring-1 ring-primary/30'
       )}
     >
       <div className="truncate text-sm font-medium">
