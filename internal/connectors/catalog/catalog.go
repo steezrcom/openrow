@@ -19,5 +19,6 @@ import (
 	_ "github.com/openrow/openrow/internal/connectors/catalog/revolut"
 	_ "github.com/openrow/openrow/internal/connectors/catalog/slack"
 	_ "github.com/openrow/openrow/internal/connectors/catalog/stripe"
+	_ "github.com/openrow/openrow/internal/connectors/catalog/uol"
 	_ "github.com/openrow/openrow/internal/connectors/catalog/vies"
 )
