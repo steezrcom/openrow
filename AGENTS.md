@@ -8,6 +8,7 @@ Short guide for AI coding agents working in this repo. Read once, apply througho
 - **Frontend:** React 18 + Vite + TypeScript, TanStack Router/Query, Tailwind, Zustand. Lives in `web/`.
 - **DB:** Postgres 16. Schema-per-tenant (`tenant_<slug>`), with system tables in the `openrow` schema. Migrations embedded in `internal/store/migrations/*.sql`.
 - **License:** AGPL-3.0. Don't add code under a different license.
+- **Scope:** self-host focused, open-source. No billing, plans, seat counts, Stripe customer plumbing, metered limits, trial logic, or usage-based gating — not now, not as placeholders. A paid SaaS fork can add that on its own; keep upstream honest.
 
 ## Dev setup
 
