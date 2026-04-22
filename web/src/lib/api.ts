@@ -116,6 +116,7 @@ export interface Dashboard {
   name: string
   slug: string
   description?: string
+  default_date_range?: string
   position: number
   reports?: Report[]
   created_at: string

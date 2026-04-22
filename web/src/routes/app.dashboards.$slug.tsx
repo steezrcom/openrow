@@ -6,7 +6,7 @@ import { api, type Report } from '@/lib/api'
 import { useDashboard } from '@/hooks/useDashboards'
 import { Button, Card, Input, Pill } from '@/components/ui'
 import { SortableReports } from '@/components/SortableReports'
-import { DateRangePicker, type DateRange } from '@/components/DateRangePicker'
+import { DateRangePicker, computePreset, type DateRange } from '@/components/DateRangePicker'
 import { ReportEditor } from '@/components/ReportEditor'
 
 export const Route = createFileRoute('/app/dashboards/$slug')({
@@ -19,6 +19,17 @@ function DashboardPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [range, setRange] = useState<DateRange>({ presetKey: 'all' })
+  // Seed the range from the dashboard's server-side default once, on first
+  // load. After that the user's choices win, even if the dashboard data
+  // refetches.
+  const [rangeSeeded, setRangeSeeded] = useState(false)
+  useEffect(() => {
+    if (rangeSeeded || !dashboard.data) return
+    const preset = computePreset(dashboard.data.default_date_range)
+    if (preset) setRange(preset)
+    setRangeSeeded(true)
+  }, [rangeSeeded, dashboard.data])
+
   const [editorMode, setEditorMode] = useState<
     { kind: 'create'; slug: string } | { kind: 'edit'; report: Report } | null
   >(null)

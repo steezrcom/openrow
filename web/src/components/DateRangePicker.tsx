@@ -8,7 +8,7 @@ export interface DateRange {
   presetKey?: PresetKey
 }
 
-type PresetKey =
+export type PresetKey =
   | 'all'
   | '7d'
   | '30d'
@@ -18,6 +18,14 @@ type PresetKey =
   | 'ytd'
   | 'prev_month'
   | 'last_12m'
+
+// computePreset evaluates a preset key into a concrete DateRange. Returns
+// null for unknown keys so callers can fall back to their own default.
+export function computePreset(key: string | undefined): DateRange | null {
+  if (!key) return null
+  const p = PRESETS.find((p) => p.key === key)
+  return p ? p.compute() : null
+}
 
 interface Preset {
   key: PresetKey
