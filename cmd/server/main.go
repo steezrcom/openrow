@@ -16,6 +16,7 @@ import (
 	"github.com/openrow/openrow/internal/config"
 	"github.com/openrow/openrow/internal/connectors"
 	_ "github.com/openrow/openrow/internal/connectors/catalog"
+	"github.com/openrow/openrow/internal/docs"
 	"github.com/openrow/openrow/internal/entities"
 	"github.com/openrow/openrow/internal/flows"
 	"github.com/openrow/openrow/internal/httpapi"
@@ -71,6 +72,7 @@ func run(log *slog.Logger) error {
 	flowSvc := flows.NewService(pool, enc)
 	agent := ai.NewAgent(llmSvc, entSvc, dashSvc, connectorSvc)
 	agent.AddToolProvider(flows.ChatTools(flowSvc, connectorSvc))
+	agent.AddToolProvider(docs.Provider(entSvc))
 	flowRunner := flows.NewRunner(flowSvc, llmSvc, agent, tenantSvc)
 	flowDispatcher := flows.NewInMemoryDispatcher(flowSvc, flowRunner, 4, 256, log)
 	flowDispatcher.Start()

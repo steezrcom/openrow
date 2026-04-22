@@ -465,16 +465,18 @@ func insertInvoices(ctx context.Context, svc *entities.Service, tenantID, schema
 			status, paymentDate := invoiceStatus(issue, today, rng)
 
 			input := map[string]string{
-				"number":     fmt.Sprintf("INV-%s-%03d", issue.Format("200601"), slot),
-				"client":     clientIDs[clientIdx],
-				"issue_date": issue.Format("2006-01-02"),
-				"due_date":   issue.AddDate(0, 0, 14).Format("2006-01-02"),
-				"status":     status,
-				"currency":   "CZK",
-				"subtotal":   fmt.Sprintf("%.2f", subtotal),
-				"vat_amount": fmt.Sprintf("%.2f", vat),
-				"total":      fmt.Sprintf("%.2f", total),
-				"vat_mode":   "standard",
+				"number":          fmt.Sprintf("INV-%s-%03d", issue.Format("200601"), slot),
+				"kind":            "invoice",
+				"client":          clientIDs[clientIdx],
+				"variable_symbol": fmt.Sprintf("%s%03d", issue.Format("200601"), slot),
+				"issue_date":      issue.Format("2006-01-02"),
+				"due_date":        issue.AddDate(0, 0, 14).Format("2006-01-02"),
+				"status":          status,
+				"currency":        "CZK",
+				"subtotal":        fmt.Sprintf("%.2f", subtotal),
+				"vat_amount":      fmt.Sprintf("%.2f", vat),
+				"total":           fmt.Sprintf("%.2f", total),
+				"vat_mode":        "standard",
 			}
 			if !paymentDate.IsZero() {
 				input["payment_date"] = paymentDate.Format("2006-01-02")
@@ -501,7 +503,7 @@ func invoiceStatus(issue, today time.Time, rng *rand.Rand) (string, time.Time) {
 		}
 		return "paid", issue.AddDate(0, 0, 8+rng.Intn(10))
 	default:
-		return "pending", time.Time{}
+		return "sent", time.Time{}
 	}
 }
 
