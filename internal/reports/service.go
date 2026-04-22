@@ -14,15 +14,19 @@ import (
 )
 
 type Dashboard struct {
-	ID          string    `json:"id"`
-	TenantID    string    `json:"tenant_id"`
-	Name        string    `json:"name"`
-	Slug        string    `json:"slug"`
-	Description string    `json:"description,omitempty"`
-	Position    int       `json:"position"`
-	Reports     []Report  `json:"reports,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string `json:"id"`
+	TenantID    string `json:"tenant_id"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Description string `json:"description,omitempty"`
+	// DefaultDateRange is a preset key the UI seeds into its date-range
+	// picker on first render (e.g. "mtd", "ytd", "all"). Empty means no
+	// server-side opinion; the frontend falls back to its own default.
+	DefaultDateRange string    `json:"default_date_range,omitempty"`
+	Position         int       `json:"position"`
+	Reports          []Report  `json:"reports,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type Report struct {
@@ -67,10 +71,11 @@ func slugify(s string) string {
 
 // CreateDashboardInput is passed both via HTTP and via the agent tool.
 type CreateDashboardInput struct {
-	Name        string              `json:"name"`
-	Slug        string              `json:"slug,omitempty"`
-	Description string              `json:"description,omitempty"`
-	Reports     []CreateReportInput `json:"reports,omitempty"`
+	Name             string              `json:"name"`
+	Slug             string              `json:"slug,omitempty"`
+	Description      string              `json:"description,omitempty"`
+	DefaultDateRange string              `json:"default_date_range,omitempty"`
+	Reports          []CreateReportInput `json:"reports,omitempty"`
 }
 
 type CreateReportInput struct {
@@ -109,10 +114,10 @@ func (s *Service) Create(ctx context.Context, tenantID string, in CreateDashboar
 
 	var id string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO openrow.dashboards (tenant_id, name, slug, description)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO openrow.dashboards (tenant_id, name, slug, description, default_date_range)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id`,
-		tenantID, in.Name, slug, nullIfEmpty(in.Description),
+		tenantID, in.Name, slug, nullIfEmpty(in.Description), nullIfEmpty(in.DefaultDateRange),
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert dashboard: %w", err)
@@ -195,7 +200,7 @@ func marshalOptions(opts map[string]interface{}) map[string]interface{} {
 
 func (s *Service) List(ctx context.Context, tenantID string) ([]Dashboard, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, tenant_id, name, slug, COALESCE(description, ''), position, created_at, updated_at
+		SELECT id, tenant_id, name, slug, COALESCE(description, ''), COALESCE(default_date_range, ''), position, created_at, updated_at
 		FROM openrow.dashboards
 		WHERE tenant_id = $1
 		ORDER BY position, name`, tenantID)
@@ -206,7 +211,7 @@ func (s *Service) List(ctx context.Context, tenantID string) ([]Dashboard, error
 	out := make([]Dashboard, 0)
 	for rows.Next() {
 		var d Dashboard
-		if err := rows.Scan(&d.ID, &d.TenantID, &d.Name, &d.Slug, &d.Description,
+		if err := rows.Scan(&d.ID, &d.TenantID, &d.Name, &d.Slug, &d.Description, &d.DefaultDateRange,
 			&d.Position, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -218,11 +223,11 @@ func (s *Service) List(ctx context.Context, tenantID string) ([]Dashboard, error
 func (s *Service) Get(ctx context.Context, tenantID, slug string) (*Dashboard, error) {
 	var d Dashboard
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, tenant_id, name, slug, COALESCE(description, ''), position, created_at, updated_at
+		SELECT id, tenant_id, name, slug, COALESCE(description, ''), COALESCE(default_date_range, ''), position, created_at, updated_at
 		FROM openrow.dashboards
 		WHERE tenant_id = $1 AND slug = $2`,
 		tenantID, slug,
-	).Scan(&d.ID, &d.TenantID, &d.Name, &d.Slug, &d.Description, &d.Position, &d.CreatedAt, &d.UpdatedAt)
+	).Scan(&d.ID, &d.TenantID, &d.Name, &d.Slug, &d.Description, &d.DefaultDateRange, &d.Position, &d.CreatedAt, &d.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
