@@ -133,6 +133,10 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("POST /api/v1/entities/{name}/fields", auth.RequireMembership(http.HandlerFunc(s.addField)))
 	authed.Handle("DELETE /api/v1/entities/{name}/fields/{field}", auth.RequireMembership(http.HandlerFunc(s.dropField)))
 	authed.Handle("GET /api/v1/entities/{name}/fields/{field}/options", auth.RequireMembership(http.HandlerFunc(s.listFieldOptions)))
+	authed.Handle("GET /api/v1/entities/{name}/views", auth.RequireMembership(http.HandlerFunc(s.listViews)))
+	authed.Handle("POST /api/v1/entities/{name}/views", auth.RequireMembership(http.HandlerFunc(s.createView)))
+	authed.Handle("PATCH /api/v1/views/{id}", auth.RequireMembership(http.HandlerFunc(s.patchView)))
+	authed.Handle("DELETE /api/v1/views/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteView)))
 	authed.Handle("POST /api/v1/chat/messages/stream", auth.RequireMembership(http.HandlerFunc(s.chatStream)))
 
 	authed.Handle("GET /api/v1/templates", auth.RequireAuth(http.HandlerFunc(s.listTemplates)))

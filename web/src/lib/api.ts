@@ -45,6 +45,21 @@ export interface Entity {
   created_at: string
 }
 
+export type ViewType = 'table' | 'cards' | 'kanban' | 'gallery'
+
+export interface EntityView {
+  id: string
+  tenant_id: string
+  entity_id: string
+  entity_name: string
+  name: string
+  view_type: ViewType
+  config: Record<string, unknown>
+  position: number
+  created_at: string
+  updated_at: string
+}
+
 export interface MeResponse {
   user: User
   memberships: Membership[]
@@ -503,6 +518,26 @@ export const api = {
 
   listFlowApprovals: () =>
     request<{ approvals: FlowApproval[] }>('/api/v1/flow_approvals').then((r) => r.approvals),
+
+  listViews: (entityName: string) =>
+    request<{ views: EntityView[] }>(
+      `/api/v1/entities/${encodeURIComponent(entityName)}/views`
+    ).then((r) => r.views),
+
+  createView: (entityName: string, body: { name: string; view_type: ViewType; config?: Record<string, unknown> }) =>
+    request<{ view: EntityView }>(
+      `/api/v1/entities/${encodeURIComponent(entityName)}/views`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ).then((r) => r.view),
+
+  patchView: (id: string, body: Partial<{ name: string; view_type: ViewType; config: Record<string, unknown>; position: number }>) =>
+    request<{ view: EntityView }>(
+      `/api/v1/views/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(body) }
+    ).then((r) => r.view),
+
+  deleteView: (id: string) =>
+    request<void>(`/api/v1/views/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   resolveFlowApproval: (id: string, body: { approve: boolean; rejection_reason?: string }) =>
     request<{ approval: FlowApproval; run: FlowRun; error?: string }>(
