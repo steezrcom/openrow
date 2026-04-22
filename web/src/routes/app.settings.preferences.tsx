@@ -1,7 +1,7 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { ChevronRight, Monitor, Moon, Sun } from 'lucide-react'
+import { createFileRoute } from '@tanstack/react-router'
+import { Monitor, Moon, Sun } from 'lucide-react'
 import { Card } from '@/components/ui'
-import { SettingsTabs } from '@/components/SettingsTabs'
+import { SettingsShell } from '@/components/SettingsShell'
 import { useTheme, type Theme } from '@/lib/theme'
 import { useLocaleStore, useT, LOCALES, type Locale } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
@@ -24,20 +24,7 @@ function PreferencesPage() {
   ]
 
   return (
-    <div className="mx-auto max-w-3xl px-8 py-10">
-      <header className="mb-6">
-        <p className="text-xs text-muted-foreground">
-          <Link to="/app" className="hover:text-foreground">{t('nav.home')}</Link>
-          <ChevronRight className="inline h-3 w-3 mx-1" />
-          {t('settings.title')}
-          <ChevronRight className="inline h-3 w-3 mx-1" />
-          {t('settings.preferences')}
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{t('settings.preferences')}</h1>
-      </header>
-
-      <SettingsTabs active="preferences" />
-
+    <SettingsShell active="preferences">
       <Card className="p-6 space-y-8">
         <section className="space-y-3">
           <h2 className="text-sm font-medium">{t('settings.theme')}</h2>
@@ -79,6 +66,6 @@ function PreferencesPage() {
           <p className="text-xs text-muted-foreground">{t('settings.language.hint')}</p>
         </section>
       </Card>
-    </div>
+    </SettingsShell>
   )
 }

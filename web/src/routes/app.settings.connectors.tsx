@@ -1,8 +1,8 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { ChevronRight, ExternalLink, Trash2 } from 'lucide-react'
+import { ExternalLink, Trash2 } from 'lucide-react'
 import {
   api,
   ApiError,
@@ -11,7 +11,7 @@ import {
 } from '@/lib/api'
 import { Button, Input, Label } from '@/components/ui'
 import { Modal } from '@/components/Modal'
-import { SettingsTabs } from '@/components/SettingsTabs'
+import { SettingsShell } from '@/components/SettingsShell'
 import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -32,21 +32,7 @@ function ConnectorsPage() {
   for (const c of configs.data ?? []) configByID.set(c.connector_id, c)
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-10">
-      <header className="mb-6">
-        <p className="text-xs text-muted-foreground">
-          <Link to="/app" className="hover:text-foreground">{t('nav.home')}</Link>
-          <ChevronRight className="inline h-3 w-3 mx-1" />
-          {t('settings.title')}
-          <ChevronRight className="inline h-3 w-3 mx-1" />
-          {t('settings.connectors')}
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{t('settings.connectors')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t('settings.connectors.hint')}</p>
-      </header>
-
-      <SettingsTabs active="connectors" />
-
+    <SettingsShell active="connectors" hint={t('settings.connectors.hint')}>
       <div className="grid gap-3 sm:grid-cols-2">
         {(connectors.data ?? []).map((c) => (
           <ConnectorCard
@@ -67,7 +53,7 @@ function ConnectorsPage() {
           onClose={() => setActive(null)}
         />
       )}
-    </div>
+    </SettingsShell>
   )
 }
 
