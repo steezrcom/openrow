@@ -7,6 +7,8 @@ package catalog
 import (
 	_ "github.com/openrow/openrow/internal/connectors/catalog/ares"
 	_ "github.com/openrow/openrow/internal/connectors/catalog/cnb"
+	_ "github.com/openrow/openrow/internal/connectors/catalog/csas"
+	_ "github.com/openrow/openrow/internal/connectors/catalog/csob"
 	_ "github.com/openrow/openrow/internal/connectors/catalog/discord"
 	_ "github.com/openrow/openrow/internal/connectors/catalog/fakturoid"
 	_ "github.com/openrow/openrow/internal/connectors/catalog/fio"
