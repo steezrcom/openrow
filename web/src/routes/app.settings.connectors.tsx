@@ -135,8 +135,12 @@ function ConfigureModal({
     }
   }
 
-  const { register, handleSubmit, reset, formState: { isSubmitting } } =
-    useForm<FormValues>({ defaultValues: defaults })
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { isSubmitting, errors },
+  } = useForm<FormValues>({ defaultValues: defaults })
 
   useEffect(() => {
     reset(defaults)
@@ -187,10 +191,17 @@ function ConfigureModal({
     <Modal open onClose={onClose} title={connector.name} widthClass="max-w-lg">
       <form
         className="space-y-4"
-        onSubmit={handleSubmit((v) => {
-          setError(null)
-          save.mutate(v)
-        })}
+        onSubmit={handleSubmit(
+          (v) => {
+            setError(null)
+            save.mutate(v)
+          },
+          () => {
+            // RHF blocked submit; surface the reason so the user isn't
+            // staring at a Save button that apparently does nothing.
+            setError(t('connectors.fillRequired'))
+          },
+        )}
       >
         <p className="text-sm text-muted-foreground">{connector.description}</p>
         {connector.homepage && (
@@ -208,23 +219,36 @@ function ConfigureModal({
         <div className="space-y-3">
           {connector.credentials.map((f) => {
             const present = Boolean(existing?.fields_present?.[f.name])
+            const fieldErr = errors[f.name]
             return (
               <div key={f.name} className="space-y-1">
-                <Label htmlFor={f.name}>
-                  {f.label}
-                  {f.required && <span className="ml-1 text-destructive">*</span>}
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor={f.name}>
+                    {f.label}
+                    {f.required && <span className="ml-1 text-destructive">*</span>}
+                  </Label>
+                  {f.kind === 'secret' && present && (
+                    <span className="text-[10px] uppercase tracking-wider text-primary">
+                      {t('connectors.secretSaved')}
+                    </span>
+                  )}
+                </div>
                 <Input
                   id={f.name}
                   type={f.kind === 'secret' ? 'password' : 'text'}
+                  autoComplete={f.kind === 'secret' ? 'new-password' : 'off'}
                   placeholder={
                     f.kind === 'secret' && present ? t('connectors.secretPlaceholder') : f.placeholder
                   }
+                  className={cn(fieldErr && 'border-destructive focus-visible:ring-destructive')}
                   {...register(f.name, {
                     required: f.required && !(f.kind === 'secret' && present),
                   })}
                 />
-                {f.help && <p className="text-xs text-muted-foreground">{f.help}</p>}
+                {fieldErr && (
+                  <p className="text-xs text-destructive">{t('connectors.fieldRequired')}</p>
+                )}
+                {f.help && !fieldErr && <p className="text-xs text-muted-foreground">{f.help}</p>}
               </div>
             )
           })}
