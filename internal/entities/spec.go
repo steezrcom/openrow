@@ -47,12 +47,16 @@ func (t DataType) SQL() (string, bool) {
 }
 
 type FieldSpec struct {
-	Name              string   `json:"name"`
-	DisplayName       string   `json:"display_name"`
-	DataType          DataType `json:"data_type"`
-	IsRequired        bool     `json:"is_required"`
-	IsUnique          bool     `json:"is_unique"`
-	ReferenceEntity   string   `json:"reference_entity,omitempty"`
+	Name            string   `json:"name"`
+	DisplayName     string   `json:"display_name"`
+	DataType        DataType `json:"data_type"`
+	IsRequired      bool     `json:"is_required"`
+	IsUnique        bool     `json:"is_unique"`
+	ReferenceEntity string   `json:"reference_entity,omitempty"`
+	// Description is optional free-text explaining the field's semantics
+	// (allowed values, sign conventions, etc.). Surfaced to the LLM and
+	// the UI; never affects DDL.
+	Description string `json:"description,omitempty"`
 }
 
 type EntitySpec struct {

@@ -755,5 +755,6 @@ func fieldSchemaProperties() map[string]any {
 		"is_required":      map[string]any{"type": "boolean"},
 		"is_unique":        map[string]any{"type": "boolean"},
 		"reference_entity": stringProp("If data_type is reference, the target entity name."),
+		"description":      stringProp("Optional free-text semantics (allowed values, sign conventions, etc.) surfaced to the UI and to future LLM calls."),
 	}
 }

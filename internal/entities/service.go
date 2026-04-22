@@ -29,6 +29,7 @@ type Field struct {
 	IsRequired      bool
 	IsUnique        bool
 	ReferenceEntity string
+	Description     string
 	Position        int
 }
 
@@ -104,17 +105,23 @@ func (s *Service) Create(ctx context.Context, tenantID, schema string, spec *Ent
 	for i, f := range spec.Fields {
 		var refEntityID *string
 		if f.DataType == TypeReference {
-			id, err := lookupEntityID(ctx, tx, tenantID, f.ReferenceEntity)
-			if err != nil {
-				return nil, err
+			if f.ReferenceEntity == spec.Name {
+				// Self-reference: point at the row we just inserted.
+				eid := entityID
+				refEntityID = &eid
+			} else {
+				id, err := lookupEntityID(ctx, tx, tenantID, f.ReferenceEntity)
+				if err != nil {
+					return nil, err
+				}
+				refEntityID = &id
 			}
-			refEntityID = &id
 		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO openrow.fields (entity_id, name, display_name, data_type, is_required, is_unique, reference_entity_id, position)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			INSERT INTO openrow.fields (entity_id, name, display_name, data_type, is_required, is_unique, reference_entity_id, position, description)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''))`,
 			entityID, f.Name, f.DisplayName, string(f.DataType),
-			f.IsRequired, f.IsUnique, refEntityID, i,
+			f.IsRequired, f.IsUnique, refEntityID, i, f.Description,
 		); err != nil {
 			return nil, fmt.Errorf("insert field %q: %w", f.Name, err)
 		}
@@ -145,7 +152,7 @@ func (s *Service) Get(ctx context.Context, tenantID, name string) (*Entity, erro
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT f.id, f.name, f.display_name, f.data_type, f.is_required, f.is_unique,
-		       COALESCE(re.name, ''), f.position
+		       COALESCE(re.name, ''), COALESCE(f.description, ''), f.position
 		FROM openrow.fields f
 		LEFT JOIN openrow.entities re ON re.id = f.reference_entity_id
 		WHERE f.entity_id = $1
@@ -158,7 +165,7 @@ func (s *Service) Get(ctx context.Context, tenantID, name string) (*Entity, erro
 		var f Field
 		var dt string
 		if err := rows.Scan(&f.ID, &f.Name, &f.DisplayName, &dt,
-			&f.IsRequired, &f.IsUnique, &f.ReferenceEntity, &f.Position); err != nil {
+			&f.IsRequired, &f.IsUnique, &f.ReferenceEntity, &f.Description, &f.Position); err != nil {
 			return nil, err
 		}
 		f.DataType = DataType(dt)
@@ -228,10 +235,10 @@ func (s *Service) AddField(ctx context.Context, tenantID, schema string, entityN
 	}
 	nextPos := len(ent.Fields)
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO openrow.fields (entity_id, name, display_name, data_type, is_required, is_unique, reference_entity_id, position)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		INSERT INTO openrow.fields (entity_id, name, display_name, data_type, is_required, is_unique, reference_entity_id, position, description)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''))`,
 		ent.ID, f.Name, f.DisplayName, string(f.DataType),
-		f.IsRequired, f.IsUnique, refEntityID, nextPos,
+		f.IsRequired, f.IsUnique, refEntityID, nextPos, f.Description,
 	); err != nil {
 		return nil, fmt.Errorf("insert field: %w", err)
 	}
@@ -303,6 +310,12 @@ func (s *Service) DropField(ctx context.Context, tenantID, schema, entityName, f
 func resolveAndBuildCreate(ctx context.Context, pool *pgxpool.Pool, tenantID, schema string, spec *EntitySpec) (string, error) {
 	for _, f := range spec.Fields {
 		if f.DataType != TypeReference {
+			continue
+		}
+		// Self-references are valid — Postgres resolves them inside the
+		// CREATE TABLE statement — but the openrow.entities row for `spec`
+		// doesn't exist yet, so skip the lookup in that case.
+		if f.ReferenceEntity == spec.Name {
 			continue
 		}
 		if _, err := lookupEntityID(ctx, pool, tenantID, f.ReferenceEntity); err != nil {

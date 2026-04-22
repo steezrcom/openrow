@@ -130,6 +130,42 @@ func (s *Service) InsertRow(ctx context.Context, schema string, ent *Entity, inp
 	return id, nil
 }
 
+// GetRow fetches a single row by id. Returns pgx.ErrNoRows if not found.
+func (s *Service) GetRow(ctx context.Context, schema string, ent *Entity, id string) (Row, error) {
+	if !identRe.MatchString(schema) {
+		return nil, fmt.Errorf("invalid schema")
+	}
+	cols := rowColumns(ent)
+	quoted := make([]string, len(cols))
+	for i, c := range cols {
+		quoted[i] = pgx.Identifier{c}.Sanitize()
+	}
+	q := fmt.Sprintf("SELECT %s FROM %s WHERE id = $1",
+		strings.Join(quoted, ", "),
+		pgx.Identifier{schema, ent.Name}.Sanitize(),
+	)
+	vals, err := s.pool.Query(ctx, q, id)
+	if err != nil {
+		return nil, err
+	}
+	defer vals.Close()
+	if !vals.Next() {
+		if err := vals.Err(); err != nil {
+			return nil, err
+		}
+		return nil, pgx.ErrNoRows
+	}
+	raw, err := vals.Values()
+	if err != nil {
+		return nil, err
+	}
+	row := make(Row, len(cols))
+	for i, c := range cols {
+		row[c] = normalizeValue(raw[i])
+	}
+	return row, nil
+}
+
 // CountRows returns the number of rows in the entity's table.
 func (s *Service) CountRows(ctx context.Context, schema string, ent *Entity) (int, error) {
 	if !identRe.MatchString(schema) {
