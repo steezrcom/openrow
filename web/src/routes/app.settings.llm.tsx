@@ -1,10 +1,9 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   Check,
-  ChevronRight,
   Cpu,
   RefreshCw,
   Server,
@@ -13,7 +12,7 @@ import {
 } from 'lucide-react'
 import { api, ApiError, type LLMProvider, type LLMTestResult } from '@/lib/api'
 import { Button, Card, Input, Label } from '@/components/ui'
-import { SettingsTabs } from '@/components/SettingsTabs'
+import { SettingsShell } from '@/components/SettingsShell'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/app/settings/llm')({
@@ -154,25 +153,7 @@ function LLMSettingsPage() {
   const hasPersistedConfig = source === 'tenant'
 
   return (
-    <div className="mx-auto max-w-3xl px-8 py-10">
-      <header className="mb-6">
-        <p className="text-xs text-muted-foreground">
-          <Link to="/app" className="hover:text-foreground">Home</Link>
-          <ChevronRight className="inline h-3 w-3 mx-1" />
-          Settings
-          <ChevronRight className="inline h-3 w-3 mx-1" />
-          LLM
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Language model</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Pick any OpenAI-compatible provider — cloud or local. Your API key is encrypted
-          before it hits the database. Tool calling requires a capable model
-          (GPT-4o, Claude 3.5+, Llama 3.1 8B+, Qwen 2.5 7B+).
-        </p>
-      </header>
-
-      <SettingsTabs active="llm" />
-
+    <SettingsShell active="llm" hint="Pick any OpenAI-compatible provider, cloud or local. API keys are encrypted at rest.">
       {showFallbackBanner && (
         <Card className="mb-6 border-primary/30 bg-primary/5 p-4 text-sm">
           This workspace is currently using the fallback <code>ANTHROPIC_API_KEY</code> from
@@ -377,7 +358,7 @@ function LLMSettingsPage() {
           or add <code>--network host</code> on Linux.
         </p>
       </section>
-    </div>
+    </SettingsShell>
   )
 }
 
