@@ -208,7 +208,7 @@ function Sidebar({
           )
         })}
 
-        <SectionLabel>{t('nav.section.money')}</SectionLabel>
+        <SectionLabel>{t('nav.section.automation')}</SectionLabel>
 
         <NavItem
           to="/app/flows"

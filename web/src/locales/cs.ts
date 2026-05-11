@@ -15,7 +15,7 @@ export const cs: Partial<typeof en> = {
   'nav.llm': 'LLM',
   'nav.preferences': 'Předvolby',
   'nav.section.work': 'Práce',
-  'nav.section.money': 'Peníze',
+  'nav.section.automation': 'Automatizace',
   'nav.section.setup': 'Nastavení',
   'flows.view.graph': 'Graf',
   'flows.view.list': 'Seznam',
