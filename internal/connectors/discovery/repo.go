@@ -177,3 +177,82 @@ func (r *Repo) ListReviewItems(ctx context.Context, bindingID string) ([]ReviewI
 	}
 	return out, rows.Err()
 }
+
+func (r *Repo) ListByTenant(ctx context.Context, tenantID string) ([]*Binding, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id FROM openrow.external_bindings WHERE tenant_id = $1 ORDER BY created_at DESC`,
+		tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]*Binding, 0, len(ids))
+	for _, id := range ids {
+		b, err := r.GetByID(ctx, tenantID, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, nil
+}
+
+// ResolveReviewItem transitions a review item to its terminal status. The
+// action verb (accept/edit/reject) maps to the persisted status enum
+// (accepted/edited/rejected).
+func (r *Repo) ResolveReviewItem(ctx context.Context, itemID, action string) error {
+	var status string
+	switch action {
+	case "accept":
+		status = "accepted"
+	case "edit":
+		status = "edited"
+	case "reject":
+		status = "rejected"
+	default:
+		return fmt.Errorf("invalid action %q", action)
+	}
+	_, err := r.pool.Exec(ctx, `
+		UPDATE openrow.external_binding_review_items
+		SET status = $2, resolved_at = now()
+		WHERE id = $1`, itemID, status)
+	return err
+}
+
+// ResolveRole returns (evidence, field_map) for a canonical role on
+// (tenant, connector). Errors if the binding is not in 'active' state.
+func (r *Repo) ResolveRole(ctx context.Context, tenantID, connectorID, role string) (string, map[string]string, error) {
+	b, err := r.GetByConnector(ctx, tenantID, connectorID)
+	if err != nil {
+		return "", nil, err
+	}
+	if b.State != StateActive {
+		return "", nil, fmt.Errorf("binding state is %q, not active", b.State)
+	}
+	if b.Mapping == nil {
+		return "", nil, fmt.Errorf("binding has no mapping")
+	}
+	for name, ev := range b.Mapping.Evidences {
+		if string(ev.Role) == role {
+			fm := map[string]string{}
+			for fname, f := range ev.Fields {
+				if f.Role != RoleUnknown && f.Role != "" {
+					fm[string(f.Role)] = fname
+				}
+			}
+			return name, fm, nil
+		}
+	}
+	return "", nil, fmt.Errorf("role %q not mapped", role)
+}

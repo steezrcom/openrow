@@ -16,6 +16,8 @@ import (
 	"github.com/openrow/openrow/internal/config"
 	"github.com/openrow/openrow/internal/connectors"
 	_ "github.com/openrow/openrow/internal/connectors/catalog"
+	"github.com/openrow/openrow/internal/connectors/catalog/flexi"
+	"github.com/openrow/openrow/internal/connectors/discovery"
 	"github.com/openrow/openrow/internal/docs"
 	"github.com/openrow/openrow/internal/entities"
 	"github.com/openrow/openrow/internal/flows"
@@ -78,6 +80,16 @@ func run(log *slog.Logger) error {
 	flowDispatcher.Start()
 	defer flowDispatcher.Stop()
 
+	discoveryRepo := discovery.NewRepo(pool)
+	flexi.SetResolver(discoveryRepoResolver{repo: discoveryRepo})
+	externalBindings := &httpapi.ExternalBindings{
+		Log:      log,
+		Repo:     discoveryRepo,
+		Conns:    connectorSvc,
+		LLM:      llmSvc,
+		AllowInt: false,
+	}
+
 	// Hook entity mutations → flow triggers. Handler is synchronous but
 	// fast: it only enqueues matched runs on the dispatcher.
 	eventRouter := flows.NewEntityEventRouter(flowSvc, flowDispatcher, log)
@@ -89,26 +101,27 @@ func run(log *slog.Logger) error {
 	flowScheduler.Start(ctx)
 
 	api := httpapi.New(httpapi.Deps{
-		Log:            log,
-		Users:          auth.NewUserService(pool),
-		Sessions:       auth.NewSessionService(pool),
-		Memberships:    auth.NewMembershipService(pool),
-		PasswordResets: auth.NewPasswordResetService(pool),
-		Tenants:        tenantSvc,
-		Entities:       entSvc,
-		Dashboards:     dashSvc,
-		ReportExec:     reportExec,
-		Proposer:       ai.NewProposer(llmSvc),
-		Agent:          agent,
-		LLM:            llmSvc,
-		Connectors:     connectorSvc,
-		Flows:          flowSvc,
-		FlowRunner:     flowRunner,
-		FlowDispatcher: flowDispatcher,
-		Mailer:         &mailer.Stdout{Log: log},
-		AppURL:         getOr("APP_URL", "http://localhost:5173"),
-		SecureCookies:  strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true"),
-		SPADir:         os.Getenv("SPA_DIR"),
+		Log:              log,
+		Users:            auth.NewUserService(pool),
+		Sessions:         auth.NewSessionService(pool),
+		Memberships:      auth.NewMembershipService(pool),
+		PasswordResets:   auth.NewPasswordResetService(pool),
+		Tenants:          tenantSvc,
+		Entities:         entSvc,
+		Dashboards:       dashSvc,
+		ReportExec:       reportExec,
+		Proposer:         ai.NewProposer(llmSvc),
+		Agent:            agent,
+		LLM:              llmSvc,
+		Connectors:       connectorSvc,
+		Flows:            flowSvc,
+		FlowRunner:       flowRunner,
+		FlowDispatcher:   flowDispatcher,
+		Mailer:           &mailer.Stdout{Log: log},
+		ExternalBindings: externalBindings,
+		AppURL:           getOr("APP_URL", "http://localhost:5173"),
+		SecureCookies:    strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true"),
+		SPADir:           os.Getenv("SPA_DIR"),
 	})
 
 	srv := &http.Server{
@@ -145,4 +158,10 @@ func getOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+type discoveryRepoResolver struct{ repo *discovery.Repo }
+
+func (d discoveryRepoResolver) Resolve(ctx context.Context, tenantID, connectorID, role string) (string, map[string]string, error) {
+	return d.repo.ResolveRole(ctx, tenantID, connectorID, role)
 }
