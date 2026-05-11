@@ -58,3 +58,8 @@ func TestClassifyConfidenceCapWithoutSamples(t *testing.T) {
 		t.Fatalf("confidence not capped without samples: %v", out.Confidence)
 	}
 }
+
+func TestWorkspaceClassifierUsesResolvedConfig(t *testing.T) {
+	t.Parallel()
+	t.Skip("integration: requires live LLM, run with OPENROW_LIVE_LLM_TESTS=1")
+}
