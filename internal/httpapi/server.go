@@ -18,47 +18,49 @@ import (
 )
 
 type Server struct {
-	log            *slog.Logger
-	users          *auth.UserService
-	sessions       *auth.SessionService
-	memberships    *auth.MembershipService
-	passwordResets *auth.PasswordResetService
-	tenants        *tenant.Service
-	entities       *entities.Service
-	dashboards     *reports.Service
-	reportExec     *reports.Executor
-	proposer       *ai.Proposer
-	agent          *ai.Agent
-	llm            *llm.Service
-	connectors     *connectors.Service
-	flows          *flows.Service
-	flowRunner     *flows.Runner
-	flowDispatcher flows.Dispatcher
-	chatLimiter    *ratelimit.Keyed
-	mail           mailer.Mailer
-	appURL         string
-	secureCookies  bool
-	spaDir         string
+	log              *slog.Logger
+	users            *auth.UserService
+	sessions         *auth.SessionService
+	memberships      *auth.MembershipService
+	passwordResets   *auth.PasswordResetService
+	tenants          *tenant.Service
+	entities         *entities.Service
+	dashboards       *reports.Service
+	reportExec       *reports.Executor
+	proposer         *ai.Proposer
+	agent            *ai.Agent
+	llm              *llm.Service
+	connectors       *connectors.Service
+	flows            *flows.Service
+	flowRunner       *flows.Runner
+	flowDispatcher   flows.Dispatcher
+	chatLimiter      *ratelimit.Keyed
+	mail             mailer.Mailer
+	appURL           string
+	secureCookies    bool
+	spaDir           string
+	externalBindings *ExternalBindings
 }
 
 type Deps struct {
-	Log            *slog.Logger
-	Users          *auth.UserService
-	Sessions       *auth.SessionService
-	Memberships    *auth.MembershipService
-	PasswordResets *auth.PasswordResetService
-	Tenants        *tenant.Service
-	Entities       *entities.Service
-	Dashboards     *reports.Service
-	ReportExec     *reports.Executor
-	Proposer       *ai.Proposer
-	Agent          *ai.Agent
-	LLM            *llm.Service
-	Connectors     *connectors.Service
-	Flows          *flows.Service
-	FlowRunner     *flows.Runner
-	FlowDispatcher flows.Dispatcher
-	Mailer         mailer.Mailer
+	Log              *slog.Logger
+	Users            *auth.UserService
+	Sessions         *auth.SessionService
+	Memberships      *auth.MembershipService
+	PasswordResets   *auth.PasswordResetService
+	Tenants          *tenant.Service
+	Entities         *entities.Service
+	Dashboards       *reports.Service
+	ReportExec       *reports.Executor
+	Proposer         *ai.Proposer
+	Agent            *ai.Agent
+	LLM              *llm.Service
+	Connectors       *connectors.Service
+	Flows            *flows.Service
+	FlowRunner       *flows.Runner
+	FlowDispatcher   flows.Dispatcher
+	Mailer           mailer.Mailer
+	ExternalBindings *ExternalBindings
 	// AppURL is the public URL users should be directed to (used in email links).
 	AppURL string
 	// SecureCookies toggles the Secure flag on session cookies. Set true behind HTTPS.
@@ -77,27 +79,28 @@ func New(d Deps) *Server {
 	// Plenty for real usage; blocks only pathological loops / abuse.
 	chatLim := ratelimit.New(0.5, 5)
 	return &Server{
-		log:            d.Log,
-		users:          d.Users,
-		sessions:       d.Sessions,
-		memberships:    d.Memberships,
-		passwordResets: d.PasswordResets,
-		tenants:        d.Tenants,
-		entities:       d.Entities,
-		dashboards:     d.Dashboards,
-		reportExec:     d.ReportExec,
-		proposer:       d.Proposer,
-		agent:          d.Agent,
-		llm:            d.LLM,
-		connectors:     d.Connectors,
-		flows:          d.Flows,
-		flowRunner:     d.FlowRunner,
-		flowDispatcher: d.FlowDispatcher,
-		chatLimiter:    chatLim,
-		mail:           d.Mailer,
-		appURL:         appURL,
-		secureCookies:  d.SecureCookies,
-		spaDir:         d.SPADir,
+		log:              d.Log,
+		users:            d.Users,
+		sessions:         d.Sessions,
+		memberships:      d.Memberships,
+		passwordResets:   d.PasswordResets,
+		tenants:          d.Tenants,
+		entities:         d.Entities,
+		dashboards:       d.Dashboards,
+		reportExec:       d.ReportExec,
+		proposer:         d.Proposer,
+		agent:            d.Agent,
+		llm:              d.LLM,
+		connectors:       d.Connectors,
+		flows:            d.Flows,
+		flowRunner:       d.FlowRunner,
+		flowDispatcher:   d.FlowDispatcher,
+		chatLimiter:      chatLim,
+		mail:             d.Mailer,
+		appURL:           appURL,
+		secureCookies:    d.SecureCookies,
+		spaDir:           d.SPADir,
+		externalBindings: d.ExternalBindings,
 	}
 }
 
@@ -180,6 +183,10 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("DELETE /api/v1/reports/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteReport)))
 	authed.Handle("POST /api/v1/reports/{id}/execute", auth.RequireMembership(http.HandlerFunc(s.executeReport)))
 	authed.Handle("POST /api/v1/queries/execute", auth.RequireMembership(http.HandlerFunc(s.executeQuery)))
+
+	if s.externalBindings != nil {
+		s.externalBindings.Mount(authed)
+	}
 
 	mux.Handle("/api/v1/", auth.RequireAuth(authed))
 

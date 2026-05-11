@@ -1,0 +1,9 @@
+{
+  "winstrom": {
+    "evidenceList": [
+      {"evidenceType": "adresar", "name": "Address book"},
+      {"evidenceType": "faktura-vydana", "name": "Issued invoices"},
+      {"evidenceType": "cenik", "name": "Price list"}
+    ]
+  }
+}

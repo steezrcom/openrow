@@ -1,0 +1,8 @@
+{
+  "winstrom": {
+    "adresar": [
+      {"nazev": "Acme s.r.o.", "ic": "12345678", "dic": "CZ12345678", "email": "info@acme.cz", "userField1@FX001": "Gold"},
+      {"nazev": "Beta a.s.", "ic": "87654321", "dic": "CZ87654321", "email": "kontakt@beta.cz", "userField1@FX001": "Silver"}
+    ]
+  }
+}

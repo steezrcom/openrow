@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "property": [
+      {"propertyName": "nazev", "type": "string", "isWritable": true},
+      {"propertyName": "ic", "type": "string", "isWritable": true},
+      {"propertyName": "dic", "type": "string", "isWritable": true},
+      {"propertyName": "email", "type": "string", "isWritable": true},
+      {"propertyName": "userField1@FX001", "type": "string", "isWritable": true}
+    ]
+  }
+}
