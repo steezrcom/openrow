@@ -12,6 +12,7 @@ import (
 	_ "github.com/openrow/openrow/internal/connectors/catalog/discord"
 	_ "github.com/openrow/openrow/internal/connectors/catalog/fakturoid"
 	_ "github.com/openrow/openrow/internal/connectors/catalog/fio"
+	_ "github.com/openrow/openrow/internal/connectors/catalog/flexi"
 	_ "github.com/openrow/openrow/internal/connectors/catalog/github"
 	_ "github.com/openrow/openrow/internal/connectors/catalog/linear"
 	_ "github.com/openrow/openrow/internal/connectors/catalog/notion"
