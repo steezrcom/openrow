@@ -8,3 +8,6 @@
 .vscode/
 cookies.txt
 /scripts/
+
+# Local notes for AI coding agents — not shared with the team.
+AGENTS.md
