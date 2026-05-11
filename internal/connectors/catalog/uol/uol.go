@@ -88,6 +88,38 @@ func actions() []connectors.Action {
 			Handler: getSalesInvoice,
 		},
 		{
+			ID:          "list_purchase_invoices",
+			Name:        "List purchase invoices",
+			Description: "List přijaté faktury. Filter by seller_id (contact), free-text q, due_date or received_date range (YYYY-MM-DD), variable_symbol, or type.",
+			Schema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"q":                  map[string]any{"type": "string"},
+					"seller_id":          map[string]any{"type": "string"},
+					"type":               map[string]any{"type": "string"},
+					"variable_symbol":    map[string]any{"type": "string"},
+					"due_date_from":      map[string]any{"type": "string"},
+					"due_date_till":      map[string]any{"type": "string"},
+					"received_date_from": map[string]any{"type": "string"},
+					"received_date_till": map[string]any{"type": "string"},
+					"page":               map[string]any{"type": "integer"},
+					"per_page":           map[string]any{"type": "integer"},
+				},
+			},
+			Handler: listPurchaseInvoices,
+		},
+		{
+			ID:          "get_purchase_invoice",
+			Name:        "Get purchase invoice",
+			Description: "Fetch one přijatá faktura by public_id.",
+			Schema: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"invoice_id": map[string]any{"type": "string"}},
+				"required":   []string{"invoice_id"},
+			},
+			Handler: getPurchaseInvoice,
+		},
+		{
 			ID:          "list_receivables",
 			Name:        "List receivables",
 			Description: "List pohledávky (open / paid / all). Filter by state (unpaid | paid | all), due_date_to (YYYY-MM-DD; useful for 'overdue as of'), or contact_id. Rate-limited to 10 req / 10 s by UOL.",
@@ -222,6 +254,67 @@ func getSalesInvoice(ctx context.Context, creds map[string]string, rawIn json.Ra
 		return nil, errors.New("invoice_id is required")
 	}
 	body, err := call(ctx, creds, http.MethodGet, "/v1/sales_invoices/"+url.PathEscape(in.InvoiceID), nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("decode invoice: %w", err)
+	}
+	return toInvoiceSlim(raw), nil
+}
+
+func listPurchaseInvoices(ctx context.Context, creds map[string]string, rawIn json.RawMessage) (any, error) {
+	var in struct {
+		Q                string `json:"q"`
+		SellerID         string `json:"seller_id"`
+		Type             string `json:"type"`
+		VariableSymbol   string `json:"variable_symbol"`
+		DueDateFrom      string `json:"due_date_from"`
+		DueDateTill      string `json:"due_date_till"`
+		ReceivedDateFrom string `json:"received_date_from"`
+		ReceivedDateTill string `json:"received_date_till"`
+		Page             int    `json:"page"`
+		PerPage          int    `json:"per_page"`
+	}
+	if len(rawIn) > 0 {
+		_ = json.Unmarshal(rawIn, &in)
+	}
+	q := url.Values{}
+	for k, v := range map[string]string{
+		"q":                  in.Q,
+		"seller_id":          in.SellerID,
+		"type":               in.Type,
+		"variable_symbol":    in.VariableSymbol,
+		"due_date_from":      in.DueDateFrom,
+		"due_date_till":      in.DueDateTill,
+		"received_date_from": in.ReceivedDateFrom,
+		"received_date_till": in.ReceivedDateTill,
+	} {
+		if v != "" {
+			q.Set(k, v)
+		}
+	}
+	setPage(q, in.Page, in.PerPage)
+
+	body, err := call(ctx, creds, http.MethodGet, "/v1/purchase_invoices", q, nil)
+	if err != nil {
+		return nil, err
+	}
+	return projectInvoices(body)
+}
+
+func getPurchaseInvoice(ctx context.Context, creds map[string]string, rawIn json.RawMessage) (any, error) {
+	var in struct {
+		InvoiceID string `json:"invoice_id"`
+	}
+	if err := json.Unmarshal(rawIn, &in); err != nil {
+		return nil, fmt.Errorf("parse input: %w", err)
+	}
+	if strings.TrimSpace(in.InvoiceID) == "" {
+		return nil, errors.New("invoice_id is required")
+	}
+	body, err := call(ctx, creds, http.MethodGet, "/v1/purchase_invoices/"+url.PathEscape(in.InvoiceID), nil, nil)
 	if err != nil {
 		return nil, err
 	}
