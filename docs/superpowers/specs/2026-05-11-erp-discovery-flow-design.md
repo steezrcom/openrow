@@ -60,8 +60,8 @@ Fetch full evidence list. Persist raw response as discovery input. This is the a
 For each evidence:
 
 - `GET /c/<company>/<evidence>/properties.json` — machine-readable schema (types, relations, code-lists).
-- `GET /c/<company>/<evidence>.json?limit=10&detail=full` — sample rows.
 - `GET /c/<company>/<evidence>/$count` — row count.
+- `GET /c/<company>/<evidence>.json?limit=10&detail=full` — sample rows. Skipped when `row_count == 0`; classification proceeds on properties alone with a confidence cap (see Stage 5).
 
 Rate-limit (parallel-bounded, e.g. 4 concurrent). Persist raw responses. Stage 3 is the most network-intensive; it produces the structured input for classification.
 
@@ -71,7 +71,7 @@ A static map ships with the connector: known Flexi evidence names → canonical 
 
 | Flexi evidence | Semantic role |
 |----------------|---------------|
-| `adresar` | `customer` (also `supplier`, disambiguated by `typVztahuK` field) |
+| `adresar` | `customer` (v1: customer only; supplier/polymorphic mapping is out of scope) |
 | `faktura-vydana` | `invoice_outgoing` |
 | `faktura-prijata` | `invoice_incoming` |
 | `cenik` | `product` |
@@ -86,7 +86,7 @@ A static map ships with the connector: known Flexi evidence names → canonical 
 
 Same table for well-known field names (`nazev` → `display_name`, `ic` → `registration_id_cz`, `dic` → `vat_id_cz`, `email`, `telefon` → `phone`, ...). Confidence 1.0 on exact match.
 
-Heuristic table lives in `internal/connectors/catalog/flexi/heuristics.go` and is curated, not LLM-generated. Curation is cheap because Flexi's stock evidence set is finite and public.
+Heuristic table lives in `internal/connectors/catalog/flexi/heuristics.go` and is curated, not LLM-generated. Curation is cheap because Flexi's stock evidence set is finite and public. The table is plain Go data; community contributions to it are first-class (one PR per evidence/field addition, with the Flexi version it was observed on).
 
 ### Stage 5 — LLM classify
 
@@ -122,6 +122,12 @@ LLM is the workspace-configured one (per existing OpenRow LLM provider system) w
 
 Discovery batches custom fields per evidence to amortize prompt overhead. One LLM call per evidence is the target ceiling, not per field.
 
+**Confidence cap on incomplete inputs.** If an evidence has zero rows (no samples in Stage 3), LLM confidence is capped at 0.7 — the classification is based on the name and properties only, which is rarely enough to auto-apply. Same cap applies when the LLM's `reasoning` explicitly notes ambiguity in sample values.
+
+**No-LLM mode.** A per-binding setting `llm_classification: false` skips Stage 5 entirely. Heuristic-only results pass through, and every non-heuristic evidence/field lands in the review queue with no proposed role. This is the privacy-safe mode for workspaces that do not want any ERP sample data sent to an LLM provider.
+
+**Re-discovery and user edits.** Entries with `source: "user"` are never re-classified by Stage 5. Re-discovery only fills in entries that are missing (newly appeared evidences/fields) or whose `source` is `"heuristic"` or `"llm"`. User-edited entries are authoritative.
+
 ### Stage 6 — Tier
 
 Apply the trust model from above. Output a per-evidence and per-field tier label (`auto`, `auto_low_confidence`, `needs_review`). Review items get queued into `external_binding_review_items`.
@@ -135,6 +141,8 @@ Write the mapping artifact (see schema below) to `external_bindings.mapping`. Fo
 - A "promote on activate" flag (default true for high-confidence roles).
 
 Entity proposals do not call `entities.Service` yet. They are surfaced in the review UI alongside the review queue.
+
+**Name collisions.** If the proposed entity name already exists in the tenant (e.g. a template installed `customer`), the proposal is flagged as a conflict. The review UI offers two resolutions: rename the new entity (default suggestion: `<connector>_<role>`, e.g. `flexi_customer`) or skip promotion (the evidence stays accessible via read-through only). Merging into an existing entity is out of scope for v1.
 
 ### Stage 8 — Activate
 
@@ -189,6 +197,8 @@ Single JSON document persisted on the binding row. Versioned. Sample:
 
 User edits in the review UI mutate this document (with an audit log). Re-discovery merges new evidences/fields without clobbering human edits, by treating `source: "user"` entries as authoritative.
 
+The `mirror` field on each evidence is the effective current setting: discovery sets a default based on role (true for stable canonical roles, false otherwise), and the user can toggle it from the binding's settings page. Toggling `mirror: true → false` stops the worker for that evidence; rows already in the target table are left in place but marked stale via a `_mirror_stopped_at` timestamp.
+
 ## Mirror worker
 
 Loop:
@@ -228,6 +238,8 @@ Errors from Flexi surface to the agent with structured codes so it can recover (
 
 ## Schema migration
 
+New numbered SQL file in `internal/store/migrations/` per existing convention (embedded via `//go:embed`). The migrator runs it in order on boot.
+
 ```sql
 -- new tables in the openrow schema
 
@@ -238,6 +250,7 @@ CREATE TABLE openrow.external_bindings (
   config_enc      bytea NOT NULL,                 -- encrypted connection config
   state           text NOT NULL,                  -- 'discovering' | 'proposed' | 'active' | 'error'
   mapping         jsonb,                          -- the artifact above
+  llm_classification boolean NOT NULL DEFAULT true, -- false = no-LLM mode
   last_error      text,
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
@@ -262,13 +275,13 @@ CREATE INDEX ON openrow.external_binding_review_items (binding_id, status);
 CREATE TABLE openrow.external_binding_cursors (
   binding_id      uuid NOT NULL REFERENCES openrow.external_bindings(id) ON DELETE CASCADE,
   evidence        text NOT NULL,
-  cursor          text NOT NULL,
+  cursor_value    text NOT NULL,
   updated_at      timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (binding_id, evidence)
 );
 ```
 
-Tenant schema sandbox tables (`erp_<binding_id>_<evidence>`) are created on activation by the same `entities.Service`-style DDL path, with an `_deleted_at` soft-delete column.
+Tenant schema sandbox tables (`erp_<binding_id>_<evidence>`) are created on activation by the same `entities.Service`-style DDL path, with `_deleted_at` and `_mirror_stopped_at` soft-state columns.
 
 ## API surface
 
@@ -324,6 +337,23 @@ Promoted entities are read-only in the OpenRow UI by default. A per-entity `allo
 - LLM calls never receive raw secrets (only sample row values and column names).
 - Sample row payloads in LLM prompts are capped (e.g. truncate string values >200 chars, mask values that look like PII tokens). The cap is per-field, not aggregate, so the LLM still sees enough to classify.
 - Mirror runs as a tenant-scoped worker; no cross-tenant queries.
+- **SSRF guard.** User-supplied Flexi URLs are validated before any outbound request: parse the URL, resolve the host, reject private/loopback/link-local addresses (unless the operator has explicitly enabled internal-network bindings in server config for on-prem deployments). Redirect-following is disabled at the HTTP-client level. Same validation runs on rediscover and sync, since servers can change DNS over time.
+
+## Deployment posture
+
+OpenRow is AGPL-3.0 open source, runnable as self-host or as managed SaaS. The discovery flow must work in both modes from the same codebase.
+
+**Self-host with on-prem LLM (Ollama, LM Studio, vLLM).** All ERP sample data stays on the host. Recommended posture for organizations with strict data-residency requirements. Discovery just works; the workspace LLM provider is set to the local server.
+
+**Self-host with cloud LLM.** Sample values leave to the configured cloud provider (OpenAI, Anthropic, etc.). Capped and PII-masked per the Security section, but operators should be aware. The `llm_classification: false` per-binding toggle is the off switch.
+
+**Managed SaaS.** Operator runs the OpenRow servers; each workspace either uses its own LLM key (cost on the workspace, data flow scoped to that workspace's provider relationship) or the SaaS-operator's hosted LLM relationship (cost on the operator, same provider). No cross-workspace data flow: mapping artifacts, samples sent to the LLM, and discovered roles are workspace-private. The SaaS operator does not aggregate or learn from any tenant's data without an explicit, separate opt-in mechanism (out of scope for v1).
+
+**Outbound network access in SaaS.** OpenRow servers need outbound to user-supplied Flexi URLs. SSRF risk: the binding-create endpoint must validate the supplied URL is not a private/loopback/link-local address before any request, and refuse redirects to such targets at fetch time. Per-binding rate-cap and per-tenant outbound concurrency limit, both configurable. The same validation is required on `rediscover` and `sync` endpoints since they re-fetch.
+
+**Worker scaling.** Mirror is an in-process goroutine in v1, sharded by binding ID with a fixed worker pool. For self-host and small SaaS (low hundreds of bindings) this is sufficient. Beyond that, migration to a distributed job queue (existing options: NATS JetStream, River, or a Postgres-backed queue like `riverqueue`) is the operator's path forward; the worker's interface is kept small to make this swap mechanical. Not in v1.
+
+**Telemetry.** No discovery telemetry leaves the host by default. If the SaaS operator wants aggregate usage statistics, that goes through OpenRow's existing telemetry mechanisms (not part of this design).
 
 ## Testing
 
@@ -341,6 +371,9 @@ Promoted entities are read-only in the OpenRow UI by default. A per-entity `allo
 - Cross-binding entity unification (one customer across Flexi + Fakturoid).
 - LLM-translated free-form filters in read-through.
 - Bulk historical backfill scheduling (initial mirror does a full pull then switches to cursor).
+- Polymorphic evidences (e.g. `adresar` serving both customer and supplier via `typVztahuK`). v1 maps `adresar` to customer only.
+- Distributed mirror worker queue for SaaS scale. v1 is in-process.
+- Cross-workspace heuristic learning. Heuristic table evolves only via explicit PRs.
 
 ## Open questions
 
