@@ -118,7 +118,7 @@ LLM returns structured JSON:
 }
 ```
 
-LLM is the workspace-configured one (per existing OpenRow LLM provider system) with a model floor: discovery refuses to run with a model below the documented minimum (tool-calling-capable, 7B+). The connector's per-binding settings can override the workspace default to a stronger model for discovery only.
+LLM is the workspace-configured one (per existing OpenRow LLM provider system) with a model floor: discovery refuses to run with a model below the documented minimum (tool-calling-capable, 7B+). There is no per-binding model override; the workspace LLM setting is the single source of truth for which model and provider discovery uses.
 
 Discovery batches custom fields per evidence to amortize prompt overhead. One LLM call per evidence is the target ceiling, not per field.
 
