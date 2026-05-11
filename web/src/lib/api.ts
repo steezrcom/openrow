@@ -714,7 +714,6 @@ export interface DiscoveryEvidence {
     name: string
     display_name: string
     promoted: boolean
-    renamed?: boolean
   }
 }
 

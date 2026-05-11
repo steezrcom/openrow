@@ -10,7 +10,19 @@ import (
 // BuildPrompt is the Flexi-aware evidence classification prompt. Wired into
 // discovery.Service when discovery is constructed for Flexi.
 func BuildPrompt(in discovery.ClassifyInput) (string, error) {
-	samplesB, _ := json.Marshal(in.Samples)
+	samples := make([]map[string]any, len(in.Samples))
+	for i, row := range in.Samples {
+		clone := make(map[string]any, len(row))
+		for k, v := range row {
+			if s, ok := v.(string); ok && len(s) > 200 {
+				clone[k] = s[:200] + "…"
+			} else {
+				clone[k] = v
+			}
+		}
+		samples[i] = clone
+	}
+	samplesB, _ := json.Marshal(samples)
 	return fmt.Sprintf(`You classify ABRA Flexi ERP evidences and columns into canonical semantic roles.
 
 Flexi uses Czech identifiers (e.g. "adresar", "nazev", "ic", "dic"). Custom fields are named "userFieldN@FXNNN".

@@ -65,7 +65,7 @@ func ClassifyEvidence(ctx context.Context, c Classifier, in ClassifyInput, build
 }
 
 func defaultEvidencePrompt(in ClassifyInput) (string, error) {
-	samplesB, _ := json.Marshal(in.Samples)
+	samplesB, _ := json.Marshal(truncateSampleStrings(in.Samples))
 	return fmt.Sprintf(`You classify ERP database tables and columns into canonical semantic roles.
 
 Evidence name: %s
@@ -106,4 +106,20 @@ func truncateString(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+func truncateSampleStrings(samples []map[string]any) []map[string]any {
+	out := make([]map[string]any, len(samples))
+	for i, row := range samples {
+		clone := make(map[string]any, len(row))
+		for k, v := range row {
+			if s, ok := v.(string); ok && len(s) > 200 {
+				clone[k] = s[:200] + "…"
+			} else {
+				clone[k] = v
+			}
+		}
+		out[i] = clone
+	}
+	return out
 }

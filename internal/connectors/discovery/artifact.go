@@ -53,7 +53,6 @@ type EntityProposal struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
 	Promoted    bool   `json:"promoted"`
-	Renamed     bool   `json:"renamed,omitempty"`
 }
 
 // Merge folds fresh discovery output into a user-edited prior artifact.

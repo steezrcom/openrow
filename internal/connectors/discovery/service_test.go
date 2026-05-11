@@ -2,9 +2,7 @@ package discovery
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
-	"time"
 )
 
 type fakeFetcher struct {
@@ -94,6 +92,4 @@ func TestServiceRunLLMFillsUnknownEvidence(t *testing.T) {
 	if ev.Review != ReviewNeedsReview {
 		t.Fatalf("expected needs_review tier")
 	}
-	_, _ = json.Marshal(art)
-	_ = time.Now()
 }
