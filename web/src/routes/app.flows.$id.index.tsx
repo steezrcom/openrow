@@ -23,6 +23,7 @@ import {
 import { api, ApiError, type Flow, type FlowMode, type FlowRun, type FlowRunStatus } from '@/lib/api'
 import { Button, Card, Input } from '@/components/ui'
 import { FlowDiagram } from '@/components/FlowDiagram'
+import { FlowGoal } from '@/components/FlowGoal'
 import {
   CONNECTOR_LABELS,
   connectorLabel,
@@ -168,11 +169,11 @@ function GoalCard({ flow }: { flow: Flow }) {
   const t = useT()
   return (
     <Card className="p-5">
-      <h3 className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <h3 className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
         <Zap className="h-3.5 w-3.5" />
         {t('flows.goal')}
       </h3>
-      <p className="whitespace-pre-wrap text-sm leading-relaxed">{flow.goal}</p>
+      <FlowGoal goal={flow.goal} />
     </Card>
   )
 }
