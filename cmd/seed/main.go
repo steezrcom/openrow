@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,7 +27,9 @@ import (
 
 	"github.com/openrow/openrow/internal/auth"
 	"github.com/openrow/openrow/internal/entities"
+	"github.com/openrow/openrow/internal/flows"
 	"github.com/openrow/openrow/internal/reports"
+	"github.com/openrow/openrow/internal/secrets"
 	"github.com/openrow/openrow/internal/store"
 	"github.com/openrow/openrow/internal/templates"
 	"github.com/openrow/openrow/internal/tenant"
@@ -123,6 +127,11 @@ func run(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, o opts) erro
 		if err := tpl.Install(ctx, tn.ID, tn.PGSchema, entSvc, dashSvc); err != nil {
 			return fmt.Errorf("install agency template: %w", err)
 		}
+		if n, err := seedFlowSeeds(ctx, pool, tn.ID, tpl.FlowSeeds); err != nil {
+			return fmt.Errorf("seed flows: %w", err)
+		} else if n > 0 {
+			log.Info("seeded flows", "n", n)
+		}
 		log.Info("agency template installed")
 	} else {
 		log.Info("agency template already present, skipping install")
@@ -165,6 +174,42 @@ func ensureUser(ctx context.Context, pool *pgxpool.Pool, users *auth.UserService
 		return nil, err
 	}
 	return users.ByID(ctx, id)
+}
+
+// seedFlowSeeds installs the template's bundled flow templates. The
+// encrypter is only needed for webhook-signing flows; cron seeds work
+// without it, but we load the key when present to stay forward-compat.
+func seedFlowSeeds(ctx context.Context, pool *pgxpool.Pool, tenantID string, seeds []templates.FlowSeed) (int, error) {
+	if len(seeds) == 0 {
+		return 0, nil
+	}
+	enc, _ := secrets.NewFromEnv("OPENROW_SECRET_KEY")
+	svc := flows.NewService(pool, enc)
+	created := 0
+	for _, seed := range seeds {
+		cfg, err := json.Marshal(seed.TriggerConfig)
+		if err != nil {
+			return created, err
+		}
+		if _, err := svc.Create(ctx, tenantID, flows.CreateFlowInput{
+			Name:          seed.Name,
+			Description:   seed.Description,
+			Goal:          seed.Goal,
+			TriggerKind:   flows.TriggerKind(seed.TriggerKind),
+			TriggerConfig: cfg,
+			ToolAllowlist: seed.ToolAllowlist,
+			Mode:          flows.Mode(seed.Mode),
+		}); err != nil {
+			// Duplicate name on rerun is the expected "already seeded" signal.
+			msg := strings.ToLower(err.Error())
+			if strings.Contains(msg, "duplicate") || strings.Contains(msg, "unique") {
+				continue
+			}
+			return created, err
+		}
+		created++
+	}
+	return created, nil
 }
 
 func ensureTenant(ctx context.Context, tenants *tenant.Service, slug, name string) (*tenant.Tenant, error) {
