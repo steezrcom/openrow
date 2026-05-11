@@ -34,6 +34,7 @@ func installAgency(ctx context.Context, tenantID, pgSchema string, ents *entitie
 		costCategoriesSpec(),
 		bankAccountsSpec(),
 		bankTransactionsSpec(),
+		receivedInvoicesSpec(),
 		budgetsSpec(),
 	}
 	for _, spec := range specs {
@@ -250,6 +251,34 @@ func costCategoriesSpec() entities.EntitySpec {
 			{Name: "name", DisplayName: "Název", DataType: entities.TypeText, IsRequired: true, IsUnique: true},
 			{Name: "kind", DisplayName: "Typ", DataType: entities.TypeText, IsRequired: true, Description: "personnel | production | overhead | other | revenue"},
 			{Name: "description", DisplayName: "Popis", DataType: entities.TypeText},
+		},
+	}
+}
+
+func receivedInvoicesSpec() entities.EntitySpec {
+	return entities.EntitySpec{
+		Name:        "received_invoices",
+		DisplayName: "Přijaté faktury",
+		Description: "Účtenky a faktury od dodavatelů. Spárované s bank_transactions přes VS. Workflow: needs_review → approved → paid (nebo rejected).",
+		Fields: []entities.FieldSpec{
+			{Name: "supplier", DisplayName: "Dodavatel", DataType: entities.TypeReference, ReferenceEntity: "suppliers"},
+			{Name: "supplier_name", DisplayName: "Dodavatel (text)", DataType: entities.TypeText, Description: "Vyplňte, pokud dodavatel ještě není v evidenci."},
+			{Name: "external_id", DisplayName: "Číslo dokladu", DataType: entities.TypeText, Description: "Číslo faktury / účtenky od dodavatele."},
+			{Name: "uol_public_id", DisplayName: "ID v UOL", DataType: entities.TypeText, Description: "public_id v UOL, pokud byla synchronizována."},
+			{Name: "received_date", DisplayName: "Přijato", DataType: entities.TypeDate},
+			{Name: "issue_date", DisplayName: "Vystaveno", DataType: entities.TypeDate},
+			{Name: "due_date", DisplayName: "Splatnost", DataType: entities.TypeDate},
+			{Name: "payment_date", DisplayName: "Zaplaceno dne", DataType: entities.TypeDate},
+			{Name: "variable_symbol", DisplayName: "VS", DataType: entities.TypeText},
+			{Name: "currency", DisplayName: "Měna", DataType: entities.TypeText},
+			{Name: "total", DisplayName: "Celkem", DataType: entities.TypeNumeric, IsRequired: true},
+			{Name: "project", DisplayName: "Projekt", DataType: entities.TypeReference, ReferenceEntity: "projects"},
+			{Name: "category", DisplayName: "Kategorie", DataType: entities.TypeReference, ReferenceEntity: "cost_categories"},
+			{Name: "status", DisplayName: "Stav", DataType: entities.TypeText, Description: "needs_review | approved | paid | rejected"},
+			{Name: "assignee", DisplayName: "Schvaluje", DataType: entities.TypeText, Description: "Kdo má proplatit / schválit. Např. 'Dan'."},
+			{Name: "matched_transaction", DisplayName: "Spárováno s platbou", DataType: entities.TypeReference, ReferenceEntity: "bank_transactions"},
+			{Name: "receipt_url", DisplayName: "Odkaz na účtenku", DataType: entities.TypeText, Description: "URL na účtenku / fakturu (Drive, e-mail, atd.) než přijde nativní upload."},
+			{Name: "notes", DisplayName: "Poznámky", DataType: entities.TypeText},
 		},
 	}
 }
@@ -527,16 +556,15 @@ and description. After the run, update bank_accounts.last_sync_at and balance wh
 		},
 		{
 			Name:        "Párování plateb s fakturami",
-			Description: "Každé ráno po syncu banky spáruje příchozí platby s nezaplacenými fakturami podle VS + částky.",
-			Goal: `For every row in bank_transactions where direction='in' AND matched_invoice IS NULL AND
-variable_symbol IS NOT NULL, find invoices where variable_symbol equals the transaction's
-variable_symbol AND status IN ('sent','overdue') AND total matches the transaction amount
-(within 1 CZK tolerance). On match, update the bank_transactions row to set matched_invoice,
-and update the invoice to status='paid' with payment_date = transaction booking_date.
-If multiple candidates or amount mismatch, set needs_review=true and stop for that row.`,
+			Description: "Každé ráno po syncu banky spáruje příchozí platby s vystavenými fakturami a odchozí platby s přijatými fakturami (VS + částka).",
+			Goal: `Call reconcile_bank_transactions to match unpaired bank_transactions against both AR
+(invoices, direction='in') and AP (received_invoices, direction='out') by variable_symbol + amount.
+The tool returns a summary {ar_matched, ap_matched, flagged, already_matched}; surface it to the user
+in a one-line message. Don't do manual matching — the tool handles ±1 CZK tolerance and flags
+amount mismatches as needs_review=true.`,
 			TriggerKind:   "cron",
 			TriggerConfig: map[string]any{"cron": "15 6 * * *"},
-			ToolAllowlist: []string{"list_entities", "query_rows", "update_row"},
+			ToolAllowlist: []string{"reconcile_bank_transactions"},
 			Mode:          "dry_run",
 			Enabled:       true,
 		},
@@ -630,6 +658,114 @@ so the accountant can chase what's missing. Don't create invoices automatically 
 			ToolAllowlist: []string{"list_entities", "query_rows", "connector_slack_post_message"},
 			Mode:          "auto",
 			Enabled:       true,
+		},
+		{
+			Name:        "Sync přijatých faktur z UOL",
+			Description: "Stáhne přijaté faktury z UOL a založí/aktualizuje řádky v received_invoices.",
+			Goal: `Use connector_uol_list_purchase_invoices to fetch the last 90 days of přijaté faktury
+(received_date_from = today minus 90 days). For each one, look up received_invoices by uol_public_id.
+If missing, add_row: set uol_public_id=public_id, supplier_name from the UOL seller name, external_id,
+received_date, due_date, variable_symbol, currency, total, status='needs_review' (or 'paid' when UOL
+already shows it paid). If present, update_row to refresh due_date, total and status.
+Don't touch rows whose status is already 'rejected'.`,
+			TriggerKind:   "cron",
+			TriggerConfig: map[string]any{"cron": "10 6 * * *"},
+			ToolAllowlist: []string{
+				"list_entities",
+				"query_rows",
+				"add_row",
+				"update_row",
+				"connector_uol_list_purchase_invoices",
+				"connector_uol_get_purchase_invoice",
+				"connector_uol_list_contacts",
+			},
+			Mode:    "dry_run",
+			Enabled: true,
+		},
+		{
+			Name:        "Schválení přijatých faktur",
+			Description: "Každý den ráno upozorní schvalovatele na nové přijaté faktury čekající na proplacení.",
+			Goal: `Query received_invoices where status='needs_review'. Group by assignee (default 'Dan' if empty).
+For each assignee, post a Slack DM (or channel message) with the list — supplier, total, due_date, VS, link
+(if receipt_url is set). One message per assignee per day, not one per invoice. Don't change row state;
+the assignee will do that manually.`,
+			TriggerKind:   "cron",
+			TriggerConfig: map[string]any{"cron": "0 8 * * 1-5"},
+			ToolAllowlist: []string{
+				"list_entities",
+				"query_rows",
+				"connector_slack_post_message",
+				"connector_resend_send_email",
+			},
+			Mode:    "auto",
+			Enabled: true,
+		},
+		{
+			Name:        "Vystavit fakturu v UOL",
+			Description: "Když je v invoices řádek s kind='invoice' nebo 'proforma', status='draft' a uol_public_id prázdné, vystaví fakturu v UOL a uloží její public_id zpět.",
+			Goal: `Query invoices where kind IN ('invoice','proforma') AND status='draft' AND
+(notes IS NULL OR notes NOT LIKE '%uol_public_id%'). For each, build the UOL body:
+{
+  buyer_id: <client.uol_id or fall back to client.name>,
+  type: 'standard' for kind='invoice' or 'proforma' for kind='proforma',
+  status: 'confirmed',
+  variable_symbol: <invoice.variable_symbol>,
+  text: <invoice.notes or project name>,
+  items: [{ product_id: 'marketing', description: invoice.notes or 'Služby', unit_price: invoice.subtotal }]
+}
+Call connector_uol_create_sales_invoice with that body. Take the returned public_id and update the
+invoice row: append 'uol_public_id=<id>' to notes and flip status='sent'.`,
+			TriggerKind:   "cron",
+			TriggerConfig: map[string]any{"cron": "*/15 * * * *"},
+			ToolAllowlist: []string{
+				"list_entities",
+				"query_rows",
+				"update_row",
+				"connector_uol_create_sales_invoice",
+				"connector_uol_list_contacts",
+			},
+			Mode:    "approve",
+			Enabled: true,
+		},
+		{
+			Name:        "Odeslat fakturu klientovi",
+			Description: "Když faktura přejde do status='sent' a v notes není 'emailed', vyrenderuje PDF/HTML a pošle e-mailem klientovi.",
+			Goal: `Query invoices where kind='invoice' AND status='sent' AND (notes IS NULL OR notes NOT LIKE '%emailed%').
+For each invoice, look up the client to get the email. Use render_document with the invoice id to get
+the HTML body. Then call connector_resend_send_email with: from your billing address, to=client.email,
+subject='Faktura <number>', html=<rendered html>. After sending, update_row to append 'emailed=<date>'
+to invoice.notes so this flow doesn't fire again.`,
+			TriggerKind:   "cron",
+			TriggerConfig: map[string]any{"cron": "*/15 * * * *"},
+			ToolAllowlist: []string{
+				"list_entities",
+				"query_rows",
+				"update_row",
+				"render_document",
+				"connector_resend_send_email",
+			},
+			Mode:    "approve",
+			Enabled: true,
+		},
+		{
+			Name:        "Mirror faktur do Notion FD",
+			Description: "Zrcadlí každou novou fakturu (AR i AP) do Notion finanční databáze, jakmile je vystavená/přijatá.",
+			Goal: `Query invoices and received_invoices created in the last 24 hours. For each, check
+its notes for a 'notion_page_id=' marker; if absent, call connector_notion_create_page on the
+configured Finanční databáze (the user sets the Notion database_id in the flow's first run by replying
+to the agent's question) with properties: Number, Supplier/Client, Amount, VS, Due, Status. Then
+update_row to append 'notion_page_id=<id>' to the row's notes. Skip rows that already have the marker.`,
+			TriggerKind:   "cron",
+			TriggerConfig: map[string]any{"cron": "20 * * * *"},
+			ToolAllowlist: []string{
+				"list_entities",
+				"query_rows",
+				"update_row",
+				"connector_notion_create_page",
+				"connector_notion_query_database",
+			},
+			Mode:    "approve",
+			Enabled: true,
 		},
 	}
 }
