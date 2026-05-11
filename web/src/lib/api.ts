@@ -551,6 +551,49 @@ export const api = {
       `/api/v1/flow_approvals/${encodeURIComponent(id)}/resolve`,
       { method: 'POST', body: JSON.stringify(body) }
     ),
+
+  listExternalBindings: () =>
+    request<{ bindings: ExternalBinding[] }>('/api/v1/connectors/external-bindings').then(
+      (r) => r.bindings,
+    ),
+
+  createExternalBinding: (body: { connector_id: string; credentials: Record<string, string> }) =>
+    request<{ binding: ExternalBinding }>('/api/v1/connectors/external-bindings', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then((r) => r.binding),
+
+  getExternalBinding: (id: string) =>
+    request<{ binding: ExternalBinding }>(
+      `/api/v1/connectors/external-bindings/${encodeURIComponent(id)}`,
+    ).then((r) => r.binding),
+
+  listExternalBindingReviewItems: (id: string) =>
+    request<{ items: ExternalBindingReviewItem[] }>(
+      `/api/v1/connectors/external-bindings/${encodeURIComponent(id)}/review-items`,
+    ).then((r) => r.items),
+
+  resolveExternalBindingReviewItem: (
+    bindingID: string,
+    itemID: string,
+    body: { action: 'accept' | 'edit' | 'reject'; patch?: Record<string, unknown> },
+  ) =>
+    request<void>(
+      `/api/v1/connectors/external-bindings/${encodeURIComponent(bindingID)}/review-items/${encodeURIComponent(itemID)}/resolve`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  activateExternalBinding: (id: string) =>
+    request<{ state: string }>(
+      `/api/v1/connectors/external-bindings/${encodeURIComponent(id)}/activate`,
+      { method: 'POST' },
+    ),
+
+  rediscoverExternalBinding: (id: string) =>
+    request<{ state: string }>(
+      `/api/v1/connectors/external-bindings/${encodeURIComponent(id)}/rediscover`,
+      { method: 'POST' },
+    ),
 }
 
 export type ConnectorStatus = 'coming_soon' | 'available'
@@ -642,4 +685,66 @@ export interface FlowApproval {
   status: FlowApprovalStatus
   rejection_reason?: string
   requested_at: string
+}
+
+export type ExternalBindingState = 'discovering' | 'proposed' | 'active' | 'error'
+
+export type DiscoveryReview = 'auto' | 'auto_low_confidence' | 'needs_review'
+export type DiscoverySource = 'heuristic' | 'llm' | 'user'
+
+export interface DiscoveryField {
+  role: string
+  type: string
+  confidence: number
+  source: DiscoverySource
+  review?: DiscoveryReview
+  reasoning?: string
+}
+
+export interface DiscoveryEvidence {
+  role: string
+  confidence: number
+  source: DiscoverySource
+  mirror: boolean
+  review: DiscoveryReview
+  row_count: number
+  reasoning?: string
+  fields: Record<string, DiscoveryField>
+  openrow_entity?: {
+    name: string
+    display_name: string
+    promoted: boolean
+    renamed?: boolean
+  }
+}
+
+export interface DiscoveryArtifact {
+  version: number
+  connector: string
+  vendor_version?: string
+  discovered_at: string
+  evidences: Record<string, DiscoveryEvidence>
+}
+
+export interface ExternalBinding {
+  ID: string
+  TenantID: string
+  ConnectorID: string
+  State: ExternalBindingState
+  Mapping: DiscoveryArtifact | null
+  LLMClassification: boolean
+  LastError: string
+  CreatedAt: string
+  UpdatedAt: string
+}
+
+export interface ExternalBindingReviewItem {
+  id: string
+  binding_id: string
+  evidence: string
+  field?: string
+  proposed: unknown
+  status: 'pending' | 'accepted' | 'edited' | 'rejected'
+  created_at: string
+  resolved_at?: string
 }

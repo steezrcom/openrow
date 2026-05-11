@@ -29,7 +29,11 @@ import { Route as AppFlowsIdRouteImport } from './routes/app.flows.$id'
 import { Route as AppFlow_runsRunIdRouteImport } from './routes/app.flow_runs.$runId'
 import { Route as AppEntitiesNameRouteImport } from './routes/app.entities.$name'
 import { Route as AppDashboardsSlugRouteImport } from './routes/app.dashboards.$slug'
+import { Route as AppSettingsConnectorsIndexRouteImport } from './routes/app.settings.connectors.index'
 import { Route as AppFlowsIdIndexRouteImport } from './routes/app.flows.$id.index'
+import { Route as AppSettingsConnectorsExternalRouteImport } from './routes/app.settings.connectors.external'
+import { Route as AppSettingsConnectorsExternalIndexRouteImport } from './routes/app.settings.connectors.external.index'
+import { Route as AppSettingsConnectorsExternalIdRouteImport } from './routes/app.settings.connectors.external.$id'
 import { Route as AppFlowsIdRunsRunIdRouteImport } from './routes/app.flows.$id.runs.$runId'
 
 const SignupRoute = SignupRouteImport.update({
@@ -132,11 +136,35 @@ const AppDashboardsSlugRoute = AppDashboardsSlugRouteImport.update({
   path: '/dashboards/$slug',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSettingsConnectorsIndexRoute =
+  AppSettingsConnectorsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AppSettingsConnectorsRoute,
+  } as any)
 const AppFlowsIdIndexRoute = AppFlowsIdIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppFlowsIdRoute,
 } as any)
+const AppSettingsConnectorsExternalRoute =
+  AppSettingsConnectorsExternalRouteImport.update({
+    id: '/external',
+    path: '/external',
+    getParentRoute: () => AppSettingsConnectorsRoute,
+  } as any)
+const AppSettingsConnectorsExternalIndexRoute =
+  AppSettingsConnectorsExternalIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AppSettingsConnectorsExternalRoute,
+  } as any)
+const AppSettingsConnectorsExternalIdRoute =
+  AppSettingsConnectorsExternalIdRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => AppSettingsConnectorsExternalRoute,
+  } as any)
 const AppFlowsIdRunsRunIdRoute = AppFlowsIdRunsRunIdRouteImport.update({
   id: '/runs/$runId',
   path: '/runs/$runId',
@@ -160,12 +188,16 @@ export interface FileRoutesByFullPath {
   '/app/flow_runs/$runId': typeof AppFlow_runsRunIdRoute
   '/app/flows/$id': typeof AppFlowsIdRouteWithChildren
   '/app/flows/new': typeof AppFlowsNewRoute
-  '/app/settings/connectors': typeof AppSettingsConnectorsRoute
+  '/app/settings/connectors': typeof AppSettingsConnectorsRouteWithChildren
   '/app/settings/llm': typeof AppSettingsLlmRoute
   '/app/settings/preferences': typeof AppSettingsPreferencesRoute
   '/app/flows/': typeof AppFlowsIndexRoute
+  '/app/settings/connectors/external': typeof AppSettingsConnectorsExternalRouteWithChildren
   '/app/flows/$id/': typeof AppFlowsIdIndexRoute
+  '/app/settings/connectors/': typeof AppSettingsConnectorsIndexRoute
   '/app/flows/$id/runs/$runId': typeof AppFlowsIdRunsRunIdRoute
+  '/app/settings/connectors/external/$id': typeof AppSettingsConnectorsExternalIdRoute
+  '/app/settings/connectors/external/': typeof AppSettingsConnectorsExternalIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -181,12 +213,14 @@ export interface FileRoutesByTo {
   '/app/entities/$name': typeof AppEntitiesNameRoute
   '/app/flow_runs/$runId': typeof AppFlow_runsRunIdRoute
   '/app/flows/new': typeof AppFlowsNewRoute
-  '/app/settings/connectors': typeof AppSettingsConnectorsRoute
   '/app/settings/llm': typeof AppSettingsLlmRoute
   '/app/settings/preferences': typeof AppSettingsPreferencesRoute
   '/app/flows': typeof AppFlowsIndexRoute
   '/app/flows/$id': typeof AppFlowsIdIndexRoute
+  '/app/settings/connectors': typeof AppSettingsConnectorsIndexRoute
   '/app/flows/$id/runs/$runId': typeof AppFlowsIdRunsRunIdRoute
+  '/app/settings/connectors/external/$id': typeof AppSettingsConnectorsExternalIdRoute
+  '/app/settings/connectors/external': typeof AppSettingsConnectorsExternalIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -206,12 +240,16 @@ export interface FileRoutesById {
   '/app/flow_runs/$runId': typeof AppFlow_runsRunIdRoute
   '/app/flows/$id': typeof AppFlowsIdRouteWithChildren
   '/app/flows/new': typeof AppFlowsNewRoute
-  '/app/settings/connectors': typeof AppSettingsConnectorsRoute
+  '/app/settings/connectors': typeof AppSettingsConnectorsRouteWithChildren
   '/app/settings/llm': typeof AppSettingsLlmRoute
   '/app/settings/preferences': typeof AppSettingsPreferencesRoute
   '/app/flows/': typeof AppFlowsIndexRoute
+  '/app/settings/connectors/external': typeof AppSettingsConnectorsExternalRouteWithChildren
   '/app/flows/$id/': typeof AppFlowsIdIndexRoute
+  '/app/settings/connectors/': typeof AppSettingsConnectorsIndexRoute
   '/app/flows/$id/runs/$runId': typeof AppFlowsIdRunsRunIdRoute
+  '/app/settings/connectors/external/$id': typeof AppSettingsConnectorsExternalIdRoute
+  '/app/settings/connectors/external/': typeof AppSettingsConnectorsExternalIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -236,8 +274,12 @@ export interface FileRouteTypes {
     | '/app/settings/llm'
     | '/app/settings/preferences'
     | '/app/flows/'
+    | '/app/settings/connectors/external'
     | '/app/flows/$id/'
+    | '/app/settings/connectors/'
     | '/app/flows/$id/runs/$runId'
+    | '/app/settings/connectors/external/$id'
+    | '/app/settings/connectors/external/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -253,12 +295,14 @@ export interface FileRouteTypes {
     | '/app/entities/$name'
     | '/app/flow_runs/$runId'
     | '/app/flows/new'
-    | '/app/settings/connectors'
     | '/app/settings/llm'
     | '/app/settings/preferences'
     | '/app/flows'
     | '/app/flows/$id'
+    | '/app/settings/connectors'
     | '/app/flows/$id/runs/$runId'
+    | '/app/settings/connectors/external/$id'
+    | '/app/settings/connectors/external'
   id:
     | '__root__'
     | '/'
@@ -281,8 +325,12 @@ export interface FileRouteTypes {
     | '/app/settings/llm'
     | '/app/settings/preferences'
     | '/app/flows/'
+    | '/app/settings/connectors/external'
     | '/app/flows/$id/'
+    | '/app/settings/connectors/'
     | '/app/flows/$id/runs/$runId'
+    | '/app/settings/connectors/external/$id'
+    | '/app/settings/connectors/external/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -437,12 +485,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardsSlugRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/settings/connectors/': {
+      id: '/app/settings/connectors/'
+      path: '/'
+      fullPath: '/app/settings/connectors/'
+      preLoaderRoute: typeof AppSettingsConnectorsIndexRouteImport
+      parentRoute: typeof AppSettingsConnectorsRoute
+    }
     '/app/flows/$id/': {
       id: '/app/flows/$id/'
       path: '/'
       fullPath: '/app/flows/$id/'
       preLoaderRoute: typeof AppFlowsIdIndexRouteImport
       parentRoute: typeof AppFlowsIdRoute
+    }
+    '/app/settings/connectors/external': {
+      id: '/app/settings/connectors/external'
+      path: '/external'
+      fullPath: '/app/settings/connectors/external'
+      preLoaderRoute: typeof AppSettingsConnectorsExternalRouteImport
+      parentRoute: typeof AppSettingsConnectorsRoute
+    }
+    '/app/settings/connectors/external/': {
+      id: '/app/settings/connectors/external/'
+      path: '/'
+      fullPath: '/app/settings/connectors/external/'
+      preLoaderRoute: typeof AppSettingsConnectorsExternalIndexRouteImport
+      parentRoute: typeof AppSettingsConnectorsExternalRoute
+    }
+    '/app/settings/connectors/external/$id': {
+      id: '/app/settings/connectors/external/$id'
+      path: '/$id'
+      fullPath: '/app/settings/connectors/external/$id'
+      preLoaderRoute: typeof AppSettingsConnectorsExternalIdRouteImport
+      parentRoute: typeof AppSettingsConnectorsExternalRoute
     }
     '/app/flows/$id/runs/$runId': {
       id: '/app/flows/$id/runs/$runId'
@@ -484,6 +560,39 @@ const AppFlowsRouteWithChildren = AppFlowsRoute._addFileChildren(
   AppFlowsRouteChildren,
 )
 
+interface AppSettingsConnectorsExternalRouteChildren {
+  AppSettingsConnectorsExternalIdRoute: typeof AppSettingsConnectorsExternalIdRoute
+  AppSettingsConnectorsExternalIndexRoute: typeof AppSettingsConnectorsExternalIndexRoute
+}
+
+const AppSettingsConnectorsExternalRouteChildren: AppSettingsConnectorsExternalRouteChildren =
+  {
+    AppSettingsConnectorsExternalIdRoute: AppSettingsConnectorsExternalIdRoute,
+    AppSettingsConnectorsExternalIndexRoute:
+      AppSettingsConnectorsExternalIndexRoute,
+  }
+
+const AppSettingsConnectorsExternalRouteWithChildren =
+  AppSettingsConnectorsExternalRoute._addFileChildren(
+    AppSettingsConnectorsExternalRouteChildren,
+  )
+
+interface AppSettingsConnectorsRouteChildren {
+  AppSettingsConnectorsExternalRoute: typeof AppSettingsConnectorsExternalRouteWithChildren
+  AppSettingsConnectorsIndexRoute: typeof AppSettingsConnectorsIndexRoute
+}
+
+const AppSettingsConnectorsRouteChildren: AppSettingsConnectorsRouteChildren = {
+  AppSettingsConnectorsExternalRoute:
+    AppSettingsConnectorsExternalRouteWithChildren,
+  AppSettingsConnectorsIndexRoute: AppSettingsConnectorsIndexRoute,
+}
+
+const AppSettingsConnectorsRouteWithChildren =
+  AppSettingsConnectorsRoute._addFileChildren(
+    AppSettingsConnectorsRouteChildren,
+  )
+
 interface AppRouteChildren {
   AppApprovalsRoute: typeof AppApprovalsRoute
   AppFlowsRoute: typeof AppFlowsRouteWithChildren
@@ -492,7 +601,7 @@ interface AppRouteChildren {
   AppDashboardsSlugRoute: typeof AppDashboardsSlugRoute
   AppEntitiesNameRoute: typeof AppEntitiesNameRoute
   AppFlow_runsRunIdRoute: typeof AppFlow_runsRunIdRoute
-  AppSettingsConnectorsRoute: typeof AppSettingsConnectorsRoute
+  AppSettingsConnectorsRoute: typeof AppSettingsConnectorsRouteWithChildren
   AppSettingsLlmRoute: typeof AppSettingsLlmRoute
   AppSettingsPreferencesRoute: typeof AppSettingsPreferencesRoute
 }
@@ -505,7 +614,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppDashboardsSlugRoute: AppDashboardsSlugRoute,
   AppEntitiesNameRoute: AppEntitiesNameRoute,
   AppFlow_runsRunIdRoute: AppFlow_runsRunIdRoute,
-  AppSettingsConnectorsRoute: AppSettingsConnectorsRoute,
+  AppSettingsConnectorsRoute: AppSettingsConnectorsRouteWithChildren,
   AppSettingsLlmRoute: AppSettingsLlmRoute,
   AppSettingsPreferencesRoute: AppSettingsPreferencesRoute,
 }
