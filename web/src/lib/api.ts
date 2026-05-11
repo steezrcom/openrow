@@ -727,15 +727,15 @@ export interface DiscoveryArtifact {
 }
 
 export interface ExternalBinding {
-  ID: string
-  TenantID: string
-  ConnectorID: string
-  State: ExternalBindingState
-  Mapping: DiscoveryArtifact | null
-  LLMClassification: boolean
-  LastError: string
-  CreatedAt: string
-  UpdatedAt: string
+  id: string
+  tenant_id: string
+  connector_id: string
+  state: ExternalBindingState
+  mapping?: DiscoveryArtifact | null
+  llm_classification: boolean
+  last_error?: string
+  created_at: string
+  updated_at: string
 }
 
 export interface ExternalBindingReviewItem {

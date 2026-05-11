@@ -26,7 +26,7 @@ function ExternalBindingDetail() {
   const binding = useQuery({
     queryKey: ['external-binding', id],
     queryFn: () => api.getExternalBinding(id),
-    refetchInterval: (q) => (q.state.data?.State === 'discovering' ? 2000 : false),
+    refetchInterval: (q) => (q.state.data?.state === 'discovering' ? 2000 : false),
   })
 
   const review = useQuery({
@@ -83,11 +83,11 @@ function ExternalBindingDetail() {
           <Card className="mb-6 p-6">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold">{b.ConnectorID}</h2>
-                <p className="mt-1 font-mono text-xs text-muted-foreground">{b.ID}</p>
+                <h2 className="text-lg font-semibold">{b.connector_id}</h2>
+                <p className="mt-1 font-mono text-xs text-muted-foreground">{b.id}</p>
                 <div className="mt-2 flex items-center gap-2">
-                  <StateBadge state={b.State} />
-                  {b.State === 'discovering' && (
+                  <StateBadge state={b.state} />
+                  {b.state === 'discovering' && (
                     <span className="text-xs text-muted-foreground">polling...</span>
                   )}
                 </div>
@@ -96,25 +96,25 @@ function ExternalBindingDetail() {
                 <Button
                   variant="ghost"
                   onClick={() => rediscover.mutate()}
-                  disabled={rediscover.isPending || b.State === 'discovering'}
+                  disabled={rediscover.isPending || b.state === 'discovering'}
                 >
                   {rediscover.isPending ? 'Working...' : 'Re-discover'}
                 </Button>
                 <Button
                   onClick={() => activate.mutate()}
-                  disabled={activate.isPending || b.State !== 'proposed'}
+                  disabled={activate.isPending || b.state !== 'proposed'}
                 >
                   {activate.isPending ? 'Working...' : 'Activate'}
                 </Button>
               </div>
             </div>
-            {b.LastError && (
-              <ErrorAlert className="mt-4">{b.LastError}</ErrorAlert>
+            {b.last_error && (
+              <ErrorAlert className="mt-4">{b.last_error}</ErrorAlert>
             )}
             {actionError && <ErrorAlert className="mt-4">{actionError}</ErrorAlert>}
           </Card>
 
-          {b.Mapping && <MappingTable evidences={b.Mapping.evidences} />}
+          {b.mapping && <MappingTable evidences={b.mapping.evidences} />}
 
           <ReviewQueue
             bindingID={id}
@@ -128,7 +128,7 @@ function ExternalBindingDetail() {
   )
 }
 
-function StateBadge({ state }: { state: ExternalBinding['State'] }) {
+function StateBadge({ state }: { state: ExternalBinding['state'] }) {
   return (
     <span
       className={cn(

@@ -61,7 +61,7 @@ function ExternalConnectorsPage() {
         ) : (
           <ul className="divide-y divide-border rounded-md border border-border bg-card">
             {bindings.data!.map((b) => (
-              <BindingRow key={b.ID} binding={b} />
+              <BindingRow key={b.id} binding={b} />
             ))}
           </ul>
         )}
@@ -93,7 +93,7 @@ function ConnectForm() {
       toast.success('Discovery started.')
       navigate({
         to: '/app/settings/connectors/external/$id',
-        params: { id: b.ID },
+        params: { id: b.id },
       })
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'failed'),
@@ -196,16 +196,16 @@ function BindingRow({ binding }: { binding: ExternalBinding }) {
     <li className="flex items-center justify-between px-4 py-3 text-sm">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="font-medium">{binding.ConnectorID}</span>
-          <StateBadge state={binding.State} />
+          <span className="font-medium">{binding.connector_id}</span>
+          <StateBadge state={binding.state} />
         </div>
-        {binding.LastError && (
-          <p className="mt-1 truncate text-xs text-destructive">{binding.LastError}</p>
+        {binding.last_error && (
+          <p className="mt-1 truncate text-xs text-destructive">{binding.last_error}</p>
         )}
       </div>
       <Link
         to="/app/settings/connectors/external/$id"
-        params={{ id: binding.ID }}
+        params={{ id: binding.id }}
         className="text-sm text-primary hover:underline"
       >
         Open
@@ -214,7 +214,7 @@ function BindingRow({ binding }: { binding: ExternalBinding }) {
   )
 }
 
-function StateBadge({ state }: { state: ExternalBinding['State'] }) {
+function StateBadge({ state }: { state: ExternalBinding['state'] }) {
   return (
     <span
       className={cn(

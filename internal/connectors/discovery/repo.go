@@ -21,15 +21,15 @@ const (
 )
 
 type Binding struct {
-	ID                string
-	TenantID          string
-	ConnectorID       string
-	State             State
-	Mapping           *Artifact
-	LLMClassification bool
-	LastError         string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID                string    `json:"id"`
+	TenantID          string    `json:"tenant_id"`
+	ConnectorID       string    `json:"connector_id"`
+	State             State     `json:"state"`
+	Mapping           *Artifact `json:"mapping,omitempty"`
+	LLMClassification bool      `json:"llm_classification"`
+	LastError         string    `json:"last_error,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type Repo struct{ pool *pgxpool.Pool }
