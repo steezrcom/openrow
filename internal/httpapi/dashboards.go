@@ -161,6 +161,36 @@ func (s *Server) deleteReport(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// executeQuery runs an ad-hoc QuerySpec posted in the body, without
+// requiring a saved report. Used by the Today / Home dashboard and
+// other places that need a live aggregate against the workspace without
+// cluttering the user's dashboards list.
+func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
+	m, _ := auth.MembershipFromContext(r.Context())
+	var req struct {
+		Spec reports.QuerySpec `json:"spec"`
+		From string            `json:"from,omitempty"`
+		To   string            `json:"to,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	ent, err := s.entities.Get(r.Context(), m.TenantID, req.Spec.Entity)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "entity "+req.Spec.Entity+" not found")
+		return
+	}
+	from := parseTimeQ(req.From)
+	to := parseTimeQ(req.To)
+	result, err := s.runWithRange(r, ent, &req.Spec, from, to)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"result": result})
+}
+
 // executeReport runs the report's query and returns normalized results.
 // Supports ?from=<rfc3339>&to=<rfc3339> to inject filters on the report's
 // date_filter_field (if set). Reports without date_filter_field ignore the range.

@@ -179,6 +179,7 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("PATCH /api/v1/reports/{id}", auth.RequireMembership(http.HandlerFunc(s.patchReport)))
 	authed.Handle("DELETE /api/v1/reports/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteReport)))
 	authed.Handle("POST /api/v1/reports/{id}/execute", auth.RequireMembership(http.HandlerFunc(s.executeReport)))
+	authed.Handle("POST /api/v1/queries/execute", auth.RequireMembership(http.HandlerFunc(s.executeQuery)))
 
 	mux.Handle("/api/v1/", auth.RequireAuth(authed))
 

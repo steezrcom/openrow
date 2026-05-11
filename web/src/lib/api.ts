@@ -420,6 +420,12 @@ export const api = {
       { method: 'POST', body: JSON.stringify(body) }
     ).then((r) => r.report),
 
+  executeQuery: (spec: QuerySpec, range?: { from?: string; to?: string }) =>
+    request<{ result: ReportResult }>('/api/v1/queries/execute', {
+      method: 'POST',
+      body: JSON.stringify({ spec, from: range?.from, to: range?.to }),
+    }).then((r) => r.result),
+
   executeReport: (id: string, range?: { from?: string; to?: string }) => {
     const qs = new URLSearchParams()
     if (range?.from) qs.set('from', range.from)
