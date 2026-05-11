@@ -33,9 +33,13 @@ type FieldHint struct {
 }
 
 // ClassifyEvidence calls the classifier and parses its JSON reply. Confidence
-// is capped at 0.7 when HasSamples is false (Stage 5 confidence cap).
-func ClassifyEvidence(ctx context.Context, c Classifier, in ClassifyInput) (*ClassifyOutput, error) {
-	prompt, err := buildEvidencePrompt(in)
+// is capped at 0.7 when HasSamples is false (Stage 5 confidence cap). A nil
+// builder falls back to defaultEvidencePrompt.
+func ClassifyEvidence(ctx context.Context, c Classifier, in ClassifyInput, builder PromptBuilder) (*ClassifyOutput, error) {
+	if builder == nil {
+		builder = defaultEvidencePrompt
+	}
+	prompt, err := builder(in)
 	if err != nil {
 		return nil, err
 	}
@@ -60,9 +64,7 @@ func ClassifyEvidence(ctx context.Context, c Classifier, in ClassifyInput) (*Cla
 	return &out, nil
 }
 
-// buildEvidencePrompt is a package-level var so the discovery service can
-// swap in vendor-specific builders (e.g. Flexi's Czech-aware prompt).
-var buildEvidencePrompt = func(in ClassifyInput) (string, error) {
+func defaultEvidencePrompt(in ClassifyInput) (string, error) {
 	samplesB, _ := json.Marshal(in.Samples)
 	return fmt.Sprintf(`You classify ERP database tables and columns into canonical semantic roles.
 

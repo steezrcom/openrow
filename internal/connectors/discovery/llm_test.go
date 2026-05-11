@@ -31,7 +31,7 @@ func TestClassifyEvidence(t *testing.T) {
 		Properties:   json.RawMessage(`[]`),
 		Samples:      []map[string]any{{"k": "v"}},
 		HasSamples:   true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("classify: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestClassifyConfidenceCapWithoutSamples(t *testing.T) {
 		EvidenceName: "x",
 		Properties:   json.RawMessage(`[]`),
 		HasSamples:   false,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("classify: %v", err)
 	}

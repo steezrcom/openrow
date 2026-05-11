@@ -210,8 +210,9 @@ func (r *Repo) ListByTenant(ctx context.Context, tenantID string) ([]*Binding, e
 
 // ResolveReviewItem transitions a review item to its terminal status. The
 // action verb (accept/edit/reject) maps to the persisted status enum
-// (accepted/edited/rejected).
-func (r *Repo) ResolveReviewItem(ctx context.Context, itemID, action string) error {
+// (accepted/edited/rejected). The bindingID scope guards against cross-tenant
+// resolution by item ID alone.
+func (r *Repo) ResolveReviewItem(ctx context.Context, bindingID, itemID, action string) error {
 	var status string
 	switch action {
 	case "accept":
@@ -223,10 +224,15 @@ func (r *Repo) ResolveReviewItem(ctx context.Context, itemID, action string) err
 	default:
 		return fmt.Errorf("invalid action %q", action)
 	}
-	_, err := r.pool.Exec(ctx, `
+	var id string
+	err := r.pool.QueryRow(ctx, `
 		UPDATE openrow.external_binding_review_items
-		SET status = $2, resolved_at = now()
-		WHERE id = $1`, itemID, status)
+		SET status = $3, resolved_at = now()
+		WHERE id = $1 AND binding_id = $2
+		RETURNING id`, itemID, bindingID, status).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
 	return err
 }
 

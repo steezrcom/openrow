@@ -157,10 +157,7 @@ func (s *Service) callLLM(ctx context.Context, evidence string, props []Property
 		Samples:      samples,
 		HasSamples:   hasSamples,
 	}
-	if s.PromptBuilder != nil {
-		buildEvidencePrompt = s.PromptBuilder
-	}
-	return ClassifyEvidence(ctx, s.Classifier, in)
+	return ClassifyEvidence(ctx, s.Classifier, in, s.PromptBuilder)
 }
 
 // isUserCustomField returns true for Flexi-style customer-defined fields. The

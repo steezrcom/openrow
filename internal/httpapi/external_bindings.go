@@ -251,7 +251,11 @@ func (h *ExternalBindings) resolveReview(w http.ResponseWriter, r *http.Request)
 		writeErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	if err := h.Repo.ResolveReviewItem(r.Context(), itemID, in.Action); err != nil {
+	if err := h.Repo.ResolveReviewItem(r.Context(), bindingID, itemID, in.Action); err != nil {
+		if errors.Is(err, discovery.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "review item not found")
+			return
+		}
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -290,6 +294,10 @@ func (h *ExternalBindings) rediscover(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if b.State == discovery.StateActive {
+		writeErr(w, http.StatusConflict, "binding is active; deactivate or wait for Plan 2 atomic re-discovery")
 		return
 	}
 	cfg, err := h.Conns.Get(r.Context(), m.TenantID, b.ConnectorID)
