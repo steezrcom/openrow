@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ChevronRight, ShieldAlert } from 'lucide-react'
 import { api, type FlowApproval } from '@/lib/api'
 import { Button, Card } from '@/components/ui'
+import { toast } from '@/components/Toast'
 import { useT } from '@/lib/i18n'
 
 export const Route = createFileRoute('/app/approvals')({
@@ -59,13 +60,22 @@ function ApprovalCard({ approval }: { approval: FlowApproval }) {
   const resolve = useMutation({
     mutationFn: (body: { approve: boolean; rejection_reason?: string }) =>
       api.resolveFlowApproval(approval.id, body),
-    onSuccess: (r) => {
+    onSuccess: (r, body) => {
       qc.invalidateQueries({ queryKey: ['flow-approvals'] })
       qc.invalidateQueries({ queryKey: ['flow-run', r.run?.id] })
       qc.invalidateQueries({ queryKey: ['flow-runs'] })
-      if (r.error) setError(r.error)
+      if (r.error) {
+        setError(r.error)
+        toast.error(r.error)
+      } else {
+        toast.success(body.approve ? 'Schváleno.' : 'Zamítnuto.')
+      }
     },
-    onError: (e) => setError(e instanceof Error ? e.message : 'failed'),
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : 'failed'
+      setError(msg)
+      toast.error(msg)
+    },
   })
 
   return (

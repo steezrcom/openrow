@@ -24,6 +24,7 @@ import { api, ApiError, type Flow, type FlowMode, type FlowRun, type FlowRunStat
 import { Button, Card, Input } from '@/components/ui'
 import { FlowDiagram } from '@/components/FlowDiagram'
 import { FlowGoal } from '@/components/FlowGoal'
+import { toast } from '@/components/Toast'
 import {
   CONNECTOR_LABELS,
   connectorLabel,
@@ -66,13 +67,20 @@ function FlowDetailPage() {
     mutationFn: () => api.deleteFlow(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['flows'] })
+      toast.info('Tok smazán.')
       navigate({ to: '/app/flows' })
     },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Smazání selhalo.'),
   })
 
   const patch = useMutation({
     mutationFn: (body: Parameters<typeof api.patchFlow>[1]) => api.patchFlow(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['flow', id] }),
+    onSuccess: (_, body) => {
+      qc.invalidateQueries({ queryKey: ['flow', id] })
+      if ('mode' in body) toast.success(`Režim změněn na ${body.mode}.`)
+      else if ('enabled' in body) toast.info(body.enabled ? 'Tok zapnut.' : 'Tok vypnut.')
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Změna selhala.'),
   })
 
   if (!flow.data) return <div className="px-8 py-10 text-sm text-muted-foreground">{t('common.loading')}</div>

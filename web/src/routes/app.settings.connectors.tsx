@@ -12,6 +12,7 @@ import {
 import { Button, Input, Label } from '@/components/ui'
 import { Modal } from '@/components/Modal'
 import { SettingsShell } from '@/components/SettingsShell'
+import { toast } from '@/components/Toast'
 import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -166,6 +167,7 @@ function ConfigureModal({
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['connector-configs'] })
+      toast.success(`${connector.name} uložen.`)
       onClose()
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'failed'),
@@ -175,6 +177,7 @@ function ConfigureModal({
     mutationFn: () => api.deleteConnectorConfig(connector.id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['connector-configs'] })
+      toast.info(`${connector.name} odpojen.`)
       onClose()
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'failed'),
