@@ -178,9 +178,9 @@ func Render(ctx context.Context, ents *entities.Service, tenantID, pgSchema, inv
 func reconcileTool(tenantID, pgSchema string, ents *entities.Service) ai.Tool {
 	return ai.Tool{
 		Name: "reconcile_bank_transactions",
-		Description: "Match unpaired incoming rows in bank_transactions against open invoices by variable_symbol (VS) and amount. " +
-			"Updates bank_transactions.matched_invoice and invoices.status='paid' + payment_date on a match. " +
-			"Rows with VS matches but wrong amount are tagged needs_review=true. Returns a summary.",
+		Description: "Match unpaired bank_transactions against open invoices on both sides: incoming (direction='in') to AR (invoices) and outgoing (direction='out') to AP (received_invoices) — both by variable_symbol + amount (±tolerance). " +
+			"Updates bank_transactions.matched_invoice or matched_transaction and the invoice's status='paid' + payment_date on a match. " +
+			"Rows with VS matches but wrong amount are tagged needs_review=true. Returns a per-direction summary.",
 		Mutates: true,
 		Schema: map[string]any{
 			"type": "object",
@@ -208,10 +208,11 @@ func reconcileTool(tenantID, pgSchema string, ents *entities.Service) ai.Tool {
 			if err != nil {
 				return ai.ExecResult{Err: fmt.Errorf("bank_transactions entity not found: %w", err)}
 			}
-			invEnt, err := ents.Get(ctx, tenantID, "invoices")
+			arEnt, err := ents.Get(ctx, tenantID, "invoices")
 			if err != nil {
 				return ai.ExecResult{Err: fmt.Errorf("invoices entity not found: %w", err)}
 			}
+			apEnt, _ := ents.Get(ctx, tenantID, "received_invoices") // optional; AP recon skipped if missing
 
 			allTx, err := ents.ListRows(ctx, pgSchema, txEnt, entities.ListOptions{
 				Limit: req.Limit, SortBy: "booking_date", SortDir: "desc",
@@ -219,88 +220,92 @@ func reconcileTool(tenantID, pgSchema string, ents *entities.Service) ai.Tool {
 			if err != nil {
 				return ai.ExecResult{Err: err}
 			}
-			openInvoices, err := ents.ListRows(ctx, pgSchema, invEnt, entities.ListOptions{
+			arRows, err := ents.ListRows(ctx, pgSchema, arEnt, entities.ListOptions{
 				Limit: 500, SortBy: "issue_date", SortDir: "desc",
 			})
 			if err != nil {
 				return ai.ExecResult{Err: err}
 			}
+			arByVS := buildArIndex(arRows)
 
-			byVS := map[string][]entities.Row{}
-			for _, inv := range openInvoices {
-				status := strings.ToLower(str(inv["status"]))
-				if status == "paid" || status == "cancelled" || status == "draft" {
-					continue
+			var apByVS map[string][]entities.Row
+			if apEnt != nil {
+				apRows, err := ents.ListRows(ctx, pgSchema, apEnt, entities.ListOptions{
+					Limit: 500, SortBy: "received_date", SortDir: "desc",
+				})
+				if err == nil {
+					apByVS = buildApIndex(apRows)
 				}
-				if k := strings.ToLower(str(inv["kind"])); k == "order_sheet" {
-					continue
-				}
-				vs := str(inv["variable_symbol"])
-				if vs == "" {
-					vs = str(inv["number"])
-				}
-				if vs == "" {
-					continue
-				}
-				byVS[vs] = append(byVS[vs], inv)
 			}
 
-			matched := 0
-			flagged := 0
-			skipped := 0
+			arMatched, apMatched, flagged, skipped := 0, 0, 0, 0
 			now := time.Now().Format("2006-01-02")
 
 			for _, tx := range allTx {
-				if str(tx["matched_invoice"]) != "" {
-					skipped++
-					continue
-				}
-				if strings.ToLower(str(tx["direction"])) != "in" {
-					continue
-				}
 				vs := str(tx["variable_symbol"])
 				if vs == "" {
 					continue
 				}
-				candidates := byVS[vs]
-				if len(candidates) == 0 {
-					continue
-				}
-				amount := numf(tx["amount"])
-				var pick entities.Row
-				for _, c := range candidates {
-					if abs(numf(c["total"])-amount) <= req.Tolerance {
-						pick = c
-						break
-					}
-				}
+				direction := strings.ToLower(str(tx["direction"]))
 				txID := str(tx["id"])
-				if pick == nil {
-					// VS match but no amount match — flag for review.
-					_ = ents.UpdateRow(ctx, pgSchema, txEnt, txID, map[string]string{
-						"needs_review": "true",
+
+				if direction == "in" {
+					if str(tx["matched_invoice"]) != "" {
+						skipped++
+						continue
+					}
+					candidates := arByVS[vs]
+					if len(candidates) == 0 {
+						continue
+					}
+					amount := numf(tx["amount"])
+					pick := pickByAmount(candidates, amount, req.Tolerance, "total")
+					if pick == nil {
+						_ = ents.UpdateRow(ctx, pgSchema, txEnt, txID, map[string]string{"needs_review": "true"})
+						flagged++
+						continue
+					}
+					invID := str(pick["id"])
+					_ = ents.UpdateRow(ctx, pgSchema, txEnt, txID, map[string]string{"matched_invoice": invID})
+					_ = ents.UpdateRow(ctx, pgSchema, arEnt, invID, map[string]string{
+						"status":       "paid",
+						"payment_date": firstNonEmpty(str(tx["booking_date"]), now),
 					})
-					flagged++
+					arMatched++
 					continue
 				}
-				invID := str(pick["id"])
-				if err := ents.UpdateRow(ctx, pgSchema, txEnt, txID, map[string]string{
-					"matched_invoice": invID,
-				}); err != nil {
+
+				if direction == "out" && apEnt != nil {
+					if str(tx["matched_invoice"]) != "" {
+						skipped++
+						continue
+					}
+					candidates := apByVS[vs]
+					if len(candidates) == 0 {
+						continue
+					}
+					amount := abs(numf(tx["amount"]))
+					pick := pickByAmount(candidates, amount, req.Tolerance, "total")
+					if pick == nil {
+						_ = ents.UpdateRow(ctx, pgSchema, txEnt, txID, map[string]string{"needs_review": "true"})
+						flagged++
+						continue
+					}
+					recID := str(pick["id"])
+					_ = ents.UpdateRow(ctx, pgSchema, apEnt, recID, map[string]string{
+						"status":              "paid",
+						"payment_date":        firstNonEmpty(str(tx["booking_date"]), now),
+						"matched_transaction": txID,
+					})
+					apMatched++
 					continue
 				}
-				if err := ents.UpdateRow(ctx, pgSchema, invEnt, invID, map[string]string{
-					"status":       "paid",
-					"payment_date": firstNonEmpty(str(tx["booking_date"]), now),
-				}); err != nil {
-					continue
-				}
-				matched++
 			}
 			return ai.ExecResult{
-				Summary: fmt.Sprintf("Reconciled %d, flagged %d, already-matched %d", matched, flagged, skipped),
+				Summary: fmt.Sprintf("AR matched %d, AP matched %d, flagged %d, already-matched %d", arMatched, apMatched, flagged, skipped),
 				Result: map[string]int{
-					"matched":         matched,
+					"ar_matched":      arMatched,
+					"ap_matched":      apMatched,
 					"flagged":         flagged,
 					"already_matched": skipped,
 				},
@@ -314,6 +319,57 @@ func abs(f float64) float64 {
 		return -f
 	}
 	return f
+}
+
+// buildArIndex maps an unpaid sales invoice row by its variable_symbol
+// (or invoice number, when VS is empty). Order_sheets and drafts are
+// skipped — they can't be paid by a bank transfer.
+func buildArIndex(rows []entities.Row) map[string][]entities.Row {
+	out := map[string][]entities.Row{}
+	for _, r := range rows {
+		s := strings.ToLower(str(r["status"]))
+		if s == "paid" || s == "cancelled" || s == "draft" {
+			continue
+		}
+		if strings.ToLower(str(r["kind"])) == "order_sheet" {
+			continue
+		}
+		vs := firstNonEmpty(str(r["variable_symbol"]), str(r["number"]))
+		if vs == "" {
+			continue
+		}
+		out[vs] = append(out[vs], r)
+	}
+	return out
+}
+
+// buildApIndex maps a not-yet-paid received_invoices row by its
+// variable_symbol. Anything in 'paid' or 'rejected' state is excluded.
+func buildApIndex(rows []entities.Row) map[string][]entities.Row {
+	out := map[string][]entities.Row{}
+	for _, r := range rows {
+		s := strings.ToLower(str(r["status"]))
+		if s == "paid" || s == "rejected" {
+			continue
+		}
+		vs := firstNonEmpty(str(r["variable_symbol"]), str(r["external_id"]))
+		if vs == "" {
+			continue
+		}
+		out[vs] = append(out[vs], r)
+	}
+	return out
+}
+
+// pickByAmount returns the first candidate whose totalField is within
+// tolerance of want. Returns nil if no candidate is close enough.
+func pickByAmount(candidates []entities.Row, want, tolerance float64, totalField string) entities.Row {
+	for _, c := range candidates {
+		if abs(numf(c[totalField])-want) <= tolerance {
+			return c
+		}
+	}
+	return nil
 }
 
 type invoiceView struct {
