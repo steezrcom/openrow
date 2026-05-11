@@ -11,6 +11,7 @@ import {
   ArrowUp,
   Plus,
   Search,
+  Table2,
   Trash2,
   ListTree,
 } from 'lucide-react'
@@ -23,7 +24,10 @@ import {
   type RefOption,
 } from '@/lib/api'
 import { Button, Card, Input, Pill } from '@/components/ui'
+import { EmptyState } from '@/components/EmptyState'
+import { Skeleton, SkeletonRows } from '@/components/Skeleton'
 import { Drawer } from '@/components/Drawer'
+import { useT } from '@/lib/i18n'
 import { ViewTabs } from '@/components/entities/ViewTabs'
 import { CardsView } from '@/components/entities/CardsView'
 import { KanbanView } from '@/components/entities/KanbanView'
@@ -123,8 +127,8 @@ function EntityDetail() {
     return (
       <div className="px-8 py-10">
         <div className="mx-auto max-w-6xl space-y-6">
-          <div className="h-8 w-64 animate-pulse rounded-md bg-muted/30" />
-          <div className="h-48 animate-pulse rounded-md bg-muted/30" />
+          <Skeleton className="h-8 w-64" />
+          <SkeletonRows count={6} height="h-12" />
         </div>
       </div>
     )
@@ -181,6 +185,7 @@ function EntityDetail() {
             dir={dir}
             onSort={setSort}
             onOpen={(row) => setMode({ kind: 'view', row })}
+            onAdd={() => setMode({ kind: 'create' })}
           />
         )}
       </div>
@@ -457,6 +462,7 @@ function RowsTable({
   dir,
   onSort,
   onOpen,
+  onAdd,
 }: {
   entity: Entity
   rows: Record<string, unknown>[]
@@ -465,18 +471,20 @@ function RowsTable({
   dir: 'asc' | 'desc' | undefined
   onSort: (field: string) => void
   onOpen: (row: Record<string, unknown>) => void
+  onAdd: () => void
 }) {
+  const t = useT()
   if (rows.length === 0) {
+    const desc = t('entities.empty.hint').replace('{name}', entity.display_name.toLowerCase())
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="max-w-sm text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-muted/40 text-muted-foreground">
-            <ListTree className="h-5 w-5" />
-          </div>
-          <h3 className="mt-4 font-medium">No records yet</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Add your first {entity.display_name.toLowerCase()} to get started.
-          </p>
+      <div className="flex h-full items-center justify-center p-8">
+        <div className="w-full max-w-md">
+          <EmptyState
+            icon={Table2}
+            title={t('entities.empty.title')}
+            description={desc}
+            action={{ label: t('entities.empty.action'), onClick: onAdd }}
+          />
         </div>
       </div>
     )

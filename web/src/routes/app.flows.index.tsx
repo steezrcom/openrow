@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { ChevronRight, GitBranch, List, Plus, Workflow } from 'lucide-react'
 import { api, type Flow } from '@/lib/api'
 import { Button, Card } from '@/components/ui'
+import { EmptyState } from '@/components/EmptyState'
+import { SkeletonRows } from '@/components/Skeleton'
 import { FlowGraph } from '@/components/FlowGraph'
 import { ModeBadge, TriggerBadge } from './app.flows'
 import { useT } from '@/lib/i18n'
@@ -46,16 +48,26 @@ function FlowsPage() {
         </div>
       </header>
 
-      {flows.isLoading && <p className="text-sm text-muted-foreground">{t('common.loading')}</p>}
+      {flows.isLoading && (
+        <div className={cn('mx-auto', view === 'list' ? 'max-w-5xl' : 'max-w-7xl')}>
+          <SkeletonRows count={5} height="h-16" />
+        </div>
+      )}
 
       {!flows.isLoading && data.length === 0 && (
-        <Card className="p-8 text-center">
-          <Workflow className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
-          <h2 className="font-medium">{t('flows.empty.title')}</h2>
-          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-            {t('flows.empty.hint')}
-          </p>
-        </Card>
+        <EmptyState
+          icon={Workflow}
+          title={t('flows.empty.title')}
+          description={t('flows.empty.hint')}
+          action={{
+            label: t('flows.empty.create'),
+            onClick: () => navigate({ to: '/app/flows/new' }),
+          }}
+          secondary={{
+            label: t('flows.empty.template'),
+            onClick: () => navigate({ to: '/app' }),
+          }}
+        />
       )}
 
       {!flows.isLoading && data.length > 0 && view === 'graph' && (

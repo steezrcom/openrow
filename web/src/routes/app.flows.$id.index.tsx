@@ -22,6 +22,8 @@ import {
 } from 'lucide-react'
 import { api, ApiError, type Flow, type FlowMode, type FlowRun, type FlowRunStatus } from '@/lib/api'
 import { Button, Card, Input } from '@/components/ui'
+import { EmptyState } from '@/components/EmptyState'
+import { Skeleton, SkeletonRows } from '@/components/Skeleton'
 import { FlowDiagram } from '@/components/FlowDiagram'
 import { FlowGoal } from '@/components/FlowGoal'
 import { toast } from '@/components/Toast'
@@ -83,7 +85,7 @@ function FlowDetailPage() {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Změna selhala.'),
   })
 
-  if (!flow.data) return <div className="px-8 py-10 text-sm text-muted-foreground">{t('common.loading')}</div>
+  if (!flow.data) return <FlowDetailSkeleton />
 
   const f = flow.data
   const tools = groupTools(f.tool_allowlist ?? [])
@@ -166,7 +168,49 @@ function FlowDetailPage() {
         </div>
       </div>
 
-      <RunsCard flowId={f.id} runs={runs.data ?? []} loading={runs.isLoading} />
+      <RunsCard
+        flowId={f.id}
+        runs={runs.data ?? []}
+        loading={runs.isLoading}
+        enabled={f.enabled}
+        onRunNow={() => {
+          setError(null)
+          trigger.mutate()
+        }}
+        runDisabled={trigger.isPending || !f.enabled}
+      />
+    </div>
+  )
+}
+
+function FlowDetailSkeleton() {
+  return (
+    <div className="mx-auto max-w-6xl px-8 py-8">
+      <header className="mb-6 space-y-3">
+        <Skeleton className="h-3 w-48" />
+        <Skeleton className="h-7 w-72" />
+      </header>
+      <Card className="mb-4 p-4">
+        <Skeleton className="h-48 w-full" />
+      </Card>
+      <div className="grid gap-4 lg:grid-cols-[3fr,2fr]">
+        <div className="space-y-4">
+          <Card className="p-5">
+            <SkeletonRows count={3} height="h-5" />
+          </Card>
+          <Card className="p-5">
+            <SkeletonRows count={4} height="h-5" />
+          </Card>
+        </div>
+        <div className="space-y-4">
+          <Card className="p-5">
+            <SkeletonRows count={2} height="h-5" />
+          </Card>
+          <Card className="p-5">
+            <SkeletonRows count={2} height="h-5" />
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }
@@ -420,10 +464,16 @@ function RunsCard({
   flowId,
   runs,
   loading,
+  enabled,
+  onRunNow,
+  runDisabled,
 }: {
   flowId: string
   runs: FlowRun[]
   loading: boolean
+  enabled: boolean
+  onRunNow: () => void
+  runDisabled: boolean
 }) {
   const t = useT()
   return (
@@ -432,11 +482,21 @@ function RunsCard({
         <Clock className="h-3.5 w-3.5" />
         {t('flows.runs')}
       </h3>
-      {loading && runs.length === 0 && (
-        <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
-      )}
+      {loading && runs.length === 0 && <SkeletonRows count={3} height="h-12" />}
       {!loading && runs.length === 0 && (
-        <p className="text-sm text-muted-foreground">{t('flows.runs.empty')}</p>
+        <EmptyState
+          icon={Clock}
+          title={t('flows.runs.empty.title')}
+          description={t('flows.runs.empty.hint')}
+          action={
+            enabled
+              ? {
+                  label: t('flows.runs.empty.action'),
+                  onClick: runDisabled ? undefined : onRunNow,
+                }
+              : undefined
+          }
+        />
       )}
       {runs.length > 0 && (
         <ol className="space-y-2">

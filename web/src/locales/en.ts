@@ -75,6 +75,11 @@ export const en = {
   'flows.runs.status.failed': 'Failed',
   'flows.empty.title': 'No flows yet',
   'flows.empty.hint': 'Flows are agent-driven automations over your data and connectors. Create one to see it in action.',
+  'flows.empty.create': 'Create your first flow',
+  'flows.empty.template': 'Use the Agency template',
+  'flows.runs.empty.title': 'No runs yet',
+  'flows.runs.empty.hint': 'Trigger the flow manually with Run now, or wait for the cron.',
+  'flows.runs.empty.action': 'Run now',
   'flows.step.agent': 'Agent',
   'flows.step.call': 'Tool call',
   'flows.step.result': 'Result',
@@ -85,6 +90,8 @@ export const en = {
   'approvals.title': 'Approvals',
   'approvals.hint': 'Flow mutations paused for your review. Approve to execute, reject to cancel and resume.',
   'approvals.empty': 'Nothing waiting for you.',
+  'approvals.empty.hint': "When a flow runs in 'approve' mode and needs to write, it shows up here.",
+  'approvals.empty.action': 'Go to flows',
   'approvals.approve': 'Approve',
   'approvals.reject': 'Reject',
   'approvals.rejectionReason': 'Rejection reason (optional)',
@@ -139,6 +146,10 @@ export const en = {
   'common.create': 'Create',
   'common.edit': 'Edit',
   'common.loading': 'Loading…',
+
+  'entities.empty.title': 'No records yet',
+  'entities.empty.hint': 'Add your first {name} to get started.',
+  'entities.empty.action': 'Add record',
 }
 
 export type TranslationKey = keyof typeof en

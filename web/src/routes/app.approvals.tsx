@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { ChevronRight, ShieldAlert } from 'lucide-react'
 import { api, type FlowApproval } from '@/lib/api'
 import { Button, Card } from '@/components/ui'
+import { EmptyState } from '@/components/EmptyState'
+import { SkeletonRows } from '@/components/Skeleton'
 import { toast } from '@/components/Toast'
 import { useT } from '@/lib/i18n'
 
@@ -36,12 +38,15 @@ function ApprovalsPage() {
         <p className="mt-1 text-sm text-muted-foreground">{t('approvals.hint')}</p>
       </header>
 
-      {list.isLoading && <p className="text-sm text-muted-foreground">{t('common.loading')}</p>}
+      {list.isLoading && <SkeletonRows count={3} height="h-32" />}
 
       {!list.isLoading && (list.data ?? []).length === 0 && (
-        <Card className="p-8 text-center">
-          <p className="text-sm text-muted-foreground">{t('approvals.empty')}</p>
-        </Card>
+        <EmptyState
+          icon={ShieldAlert}
+          title={t('approvals.empty')}
+          description={t('approvals.empty.hint')}
+          action={{ label: t('approvals.empty.action'), to: '/app/flows' }}
+        />
       )}
 
       <div className="space-y-3">
