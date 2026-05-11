@@ -1,11 +1,34 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { ChevronRight, Copy, Play, RefreshCw, Trash2 } from 'lucide-react'
-import { api, ApiError, type Flow, type FlowMode } from '@/lib/api'
+import {
+  AlertCircle,
+  Calendar,
+  ChevronRight,
+  CircleCheck,
+  CircleDot,
+  CircleX,
+  Clock,
+  Copy,
+  ExternalLink,
+  Hourglass,
+  Pencil,
+  Play,
+  Power,
+  RefreshCw,
+  Trash2,
+  Webhook,
+  Zap,
+} from 'lucide-react'
+import { api, ApiError, type Flow, type FlowMode, type FlowRun, type FlowRunStatus } from '@/lib/api'
 import { Button, Card, Input } from '@/components/ui'
+import { FlowDiagram } from '@/components/FlowDiagram'
+import {
+  CONNECTOR_LABELS,
+  connectorLabel,
+  groupTools,
+} from '@/lib/flow-meta'
 import { ModeBadge, TriggerBadge } from './app.flows'
-import { RunStatusBadge } from './app.flows.$id'
 import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -21,9 +44,6 @@ function FlowDetailPage() {
   const [error, setError] = useState<string | null>(null)
 
   const flow = useQuery({ queryKey: ['flow', id], queryFn: () => api.getFlow(id) })
-  // Poll runs so status transitions (queued → running → succeeded /
-  // awaiting_approval) show up without a manual refresh. 3s is fast
-  // enough to feel live and cheap enough to run indefinitely.
   const runs = useQuery({
     queryKey: ['flow-runs', id],
     queryFn: () => api.listFlowRuns(id),
@@ -57,9 +77,10 @@ function FlowDetailPage() {
   if (!flow.data) return <div className="px-8 py-10 text-sm text-muted-foreground">{t('common.loading')}</div>
 
   const f = flow.data
+  const tools = groupTools(f.tool_allowlist ?? [])
 
   return (
-    <div className="mx-auto max-w-5xl px-8 py-10">
+    <div className="mx-auto max-w-6xl px-8 py-8">
       <header className="mb-6">
         <p className="text-xs text-muted-foreground">
           <Link to="/app" className="hover:text-foreground">{t('nav.home')}</Link>
@@ -69,15 +90,20 @@ function FlowDetailPage() {
           {f.name}
         </p>
         <div className="mt-2 flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
               {f.name}
               <ModeBadge mode={f.mode} />
               <TriggerBadge kind={f.trigger_kind} />
+              {!f.enabled && (
+                <span className="rounded bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {t('flows.disabled')}
+                </span>
+              )}
             </h1>
             {f.description && <p className="mt-1 text-sm text-muted-foreground">{f.description}</p>}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <Button
               onClick={() => {
                 setError(null)
@@ -93,120 +119,106 @@ function FlowDetailPage() {
               onClick={() => {
                 if (confirm(t('flows.confirmDelete'))) del.mutate()
               }}
+              title={t('common.delete')}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
-        {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+        {error && (
+          <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <p>{error}</p>
+          </div>
+        )}
       </header>
 
-      <div className="grid gap-4 md:grid-cols-[2fr,3fr]">
-        <Card className="p-5 space-y-4">
-          <div>
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('flows.goal')}</h3>
-            <p className="mt-1 whitespace-pre-wrap text-sm">{f.goal}</p>
-          </div>
-          <TriggerConfigBlock flow={f} />
-          {f.trigger_kind === 'webhook' && <WebhookBlock flowId={f.id} />}
-          <div>
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('flows.mode')}</h3>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {(['dry_run', 'approve', 'auto'] as FlowMode[]).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => {
-                    if (m !== f.mode) patch.mutate({ mode: m })
-                  }}
-                  className={cn(
-                    'rounded-md border border-border px-2 py-1 text-xs',
-                    m === f.mode ? 'bg-primary/15 text-primary border-primary/40' : 'hover:bg-accent'
-                  )}
-                >
-                  {t(`flows.mode.${m}` as const)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('flows.allowlist')}</h3>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {f.tool_allowlist.map((tool) => (
-                <span key={tool} className="rounded border border-border px-2 py-0.5 font-mono text-[11px]">
-                  {tool}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('flows.enabled')}</h3>
-            <button
-              onClick={() => patch.mutate({ enabled: !f.enabled })}
-              className="mt-1 text-sm text-primary hover:underline"
-            >
-              {f.enabled ? t('flows.disable') : t('flows.enable')}
-            </button>
-          </div>
-        </Card>
+      <Card className="mb-4 p-4">
+        <FlowDiagram flow={f} />
+      </Card>
 
-        <Card className="p-5">
-          <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('flows.runs')}</h3>
-          {(runs.data ?? []).length === 0 && (
-            <p className="text-sm text-muted-foreground">{t('flows.runs.empty')}</p>
-          )}
-          <div className="divide-y divide-border">
-            {(runs.data ?? []).map((r) => (
-              <Link
-                key={r.id}
-                to="/app/flows/$id/runs/$runId"
-                params={{ id, runId: r.id }}
-                className="flex items-center justify-between gap-3 py-2 hover:bg-accent -mx-2 px-2 rounded"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(r.started_at).toLocaleString()}
-                  </p>
-                  {r.error && <p className="text-xs text-destructive line-clamp-1">{r.error}</p>}
-                </div>
-                <RunStatusBadge status={r.status} />
-              </Link>
-            ))}
-          </div>
-        </Card>
+      <div className="grid gap-4 lg:grid-cols-[3fr,2fr]">
+        <div className="space-y-4">
+          <GoalCard flow={f} />
+          <ToolsCard internal={tools.internal} connectors={tools.connectors} />
+        </div>
+        <div className="space-y-4">
+          <TriggerCard flow={f} />
+          <ModeCard
+            mode={f.mode}
+            onChange={(m) => patch.mutate({ mode: m })}
+            disabled={patch.isPending}
+          />
+          <StatusCard
+            enabled={f.enabled}
+            onToggle={() => patch.mutate({ enabled: !f.enabled })}
+            onEdit={() => navigate({ to: '/app/flows/$id', params: { id: f.id } })}
+          />
+        </div>
       </div>
+
+      <RunsCard flowId={f.id} runs={runs.data ?? []} loading={runs.isLoading} />
     </div>
   )
 }
 
-function TriggerConfigBlock({ flow }: { flow: Flow }) {
+// --- top-row cards --------------------------------------------------------
+
+function GoalCard({ flow }: { flow: Flow }) {
   const t = useT()
-  const cfg = flow.trigger_config
-  if (flow.trigger_kind === 'entity_event') {
-    const entity = cfg.entity as string | undefined
-    const events = Array.isArray(cfg.events) ? (cfg.events as string[]) : ['insert']
-    return (
-      <div>
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('flows.trigger')}</h3>
-        <p className="mt-1 text-sm">
-          <span className="font-mono">{entity ?? '?'}</span>
-          <span className="text-muted-foreground"> · {events.join(', ')}</span>
-        </p>
-      </div>
-    )
-  }
-  if (flow.trigger_kind === 'cron') {
-    const expr = (cfg.cron as string | undefined) ?? ''
-    return (
-      <div>
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t('flows.trigger.cron.expression')}</h3>
-        <p className="mt-1 font-mono text-sm">{expr}</p>
-      </div>
-    )
-  }
-  return null
+  return (
+    <Card className="p-5">
+      <h3 className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <Zap className="h-3.5 w-3.5" />
+        {t('flows.goal')}
+      </h3>
+      <p className="whitespace-pre-wrap text-sm leading-relaxed">{flow.goal}</p>
+    </Card>
+  )
 }
 
-function WebhookBlock({ flowId }: { flowId: string }) {
+function TriggerCard({ flow }: { flow: Flow }) {
+  const t = useT()
+  const cfg = flow.trigger_config ?? {}
+
+  return (
+    <Card className="p-5">
+      <h3 className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <Calendar className="h-3.5 w-3.5" />
+        {t('flows.trigger')}
+      </h3>
+      {flow.trigger_kind === 'cron' && <CronTriggerBody cfg={cfg} />}
+      {flow.trigger_kind === 'entity_event' && <EntityTriggerBody cfg={cfg} />}
+      {flow.trigger_kind === 'webhook' && <WebhookTriggerBody flowId={flow.id} />}
+      {flow.trigger_kind === 'manual' && (
+        <p className="text-sm text-muted-foreground">{t('flows.trigger.manual.hint')}</p>
+      )}
+    </Card>
+  )
+}
+
+function CronTriggerBody({ cfg }: { cfg: Record<string, unknown> }) {
+  const expr = (cfg.cron as string | undefined) ?? ''
+  return (
+    <div className="space-y-2">
+      <p className="text-sm">{humanCronCs(expr)}</p>
+      <p className="font-mono text-[11px] text-muted-foreground">{expr}</p>
+    </div>
+  )
+}
+
+function EntityTriggerBody({ cfg }: { cfg: Record<string, unknown> }) {
+  const entity = cfg.entity as string | undefined
+  const events = Array.isArray(cfg.events) ? (cfg.events as string[]) : ['insert']
+  return (
+    <p className="text-sm">
+      <span className="font-mono">{entity ?? '?'}</span>
+      <span className="text-muted-foreground"> · {events.join(', ')}</span>
+    </p>
+  )
+}
+
+function WebhookTriggerBody({ flowId }: { flowId: string }) {
   const t = useT()
   const [info, setInfo] = useState<{ url: string; token: string } | null>(null)
   const rotate = useMutation({
@@ -214,33 +226,292 @@ function WebhookBlock({ flowId }: { flowId: string }) {
     onSuccess: (r) => setInfo({ url: r.webhook_url, token: r.webhook_token_once }),
   })
   return (
-    <div>
-      <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Webhook</h3>
-      {info ? (
-        <div className="mt-1 space-y-2">
+    <div className="space-y-2">
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Webhook className="h-3.5 w-3.5" />
+        {t('flows.webhook.hint')}
+      </p>
+      {info && (
+        <>
           <div className="flex items-center gap-2">
             <Input readOnly value={info.url} onFocus={(e) => e.currentTarget.select()} />
-            <Button type="button" variant="ghost" onClick={() => navigator.clipboard.writeText(info.url)}>
+            <Button type="button" variant="ghost" onClick={() => navigator.clipboard.writeText(info.url)} title="Copy">
               <Copy className="h-3.5 w-3.5" />
             </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">{t('flows.webhook.rotatedHint')}</p>
-        </div>
-      ) : (
-        <div className="mt-1">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              if (confirm(t('flows.webhook.rotateConfirm'))) rotate.mutate()
-            }}
-            disabled={rotate.isPending}
-          >
-            <RefreshCw className="mr-1 h-3.5 w-3.5" />
-            {t('flows.webhook.rotate')}
-          </Button>
-        </div>
+        </>
       )}
+      <Button
+        type="button"
+        variant="ghost"
+        onClick={() => {
+          if (confirm(t('flows.webhook.rotateConfirm'))) rotate.mutate()
+        }}
+        disabled={rotate.isPending}
+      >
+        <RefreshCw className="mr-1 h-3.5 w-3.5" />
+        {t('flows.webhook.rotate')}
+      </Button>
     </div>
   )
 }
+
+function ModeCard({
+  mode,
+  onChange,
+  disabled,
+}: {
+  mode: FlowMode
+  onChange: (m: FlowMode) => void
+  disabled: boolean
+}) {
+  const t = useT()
+  return (
+    <Card className="p-5">
+      <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        {t('flows.mode')}
+      </h3>
+      <div className="flex flex-wrap gap-1">
+        {(['dry_run', 'approve', 'auto'] as FlowMode[]).map((m) => (
+          <button
+            key={m}
+            disabled={disabled || m === mode}
+            onClick={() => onChange(m)}
+            className={cn(
+              'rounded-md border px-3 py-1.5 text-xs transition-colors disabled:cursor-default',
+              m === mode
+                ? m === 'auto'
+                  ? 'border-primary bg-primary/15 text-primary'
+                  : m === 'approve'
+                    ? 'border-amber-500 bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                    : 'border-border bg-muted text-foreground'
+                : 'border-border hover:bg-accent',
+            )}
+          >
+            {t(`flows.mode.${m}` as const)}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">{t(`flows.mode.${mode}.hint` as const)}</p>
+    </Card>
+  )
+}
+
+function StatusCard({
+  enabled,
+  onToggle,
+  onEdit,
+}: {
+  enabled: boolean
+  onToggle: () => void
+  onEdit: () => void
+}) {
+  const t = useT()
+  return (
+    <Card className="p-5">
+      <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        {t('flows.status')}
+      </h3>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm">
+          <span
+            className={cn(
+              'inline-block h-2 w-2 rounded-full',
+              enabled ? 'bg-primary' : 'bg-muted-foreground/40',
+            )}
+          />
+          {enabled ? t('flows.enabled') : t('flows.disabled')}
+        </div>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" onClick={onToggle} title={enabled ? t('flows.disable') : t('flows.enable')}>
+            <Power className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" onClick={onEdit} title={t('common.edit')}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+// --- tools card -----------------------------------------------------------
+
+function ToolsCard({
+  internal,
+  connectors,
+}: {
+  internal: string[]
+  connectors: { connector: string; reads: string[]; writes: string[] }[]
+}) {
+  const t = useT()
+  if (internal.length === 0 && connectors.length === 0) return null
+  return (
+    <Card className="p-5">
+      <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        {t('flows.allowlist')}
+      </h3>
+      {connectors.length > 0 && (
+        <div className="space-y-3">
+          {connectors.map((c) => (
+            <div key={c.connector} className="rounded-md border border-border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">{connectorLabel(c.connector)}</span>
+                <span className="font-mono text-[10px] text-muted-foreground">{c.connector}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1">
+                {c.reads.map((a) => (
+                  <ActionPill key={`r-${a}`} action={a} side="in" />
+                ))}
+                {c.writes.map((a) => (
+                  <ActionPill key={`w-${a}`} action={a} side="out" />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {internal.length > 0 && (
+        <div className="mt-3">
+          <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+            {t('flows.allowlist.internal')}
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {internal.map((tool) => (
+              <span key={tool} className="rounded border border-border px-2 py-0.5 font-mono text-[11px]">
+                {tool}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function ActionPill({ action, side }: { action: string; side: 'in' | 'out' }) {
+  return (
+    <span
+      className={cn(
+        'rounded border px-2 py-0.5 font-mono text-[11px]',
+        side === 'in'
+          ? 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+          : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      )}
+    >
+      {action}
+    </span>
+  )
+}
+
+// --- runs card ------------------------------------------------------------
+
+function RunsCard({
+  flowId,
+  runs,
+  loading,
+}: {
+  flowId: string
+  runs: FlowRun[]
+  loading: boolean
+}) {
+  const t = useT()
+  return (
+    <Card className="mt-4 p-5">
+      <h3 className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <Clock className="h-3.5 w-3.5" />
+        {t('flows.runs')}
+      </h3>
+      {loading && runs.length === 0 && (
+        <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+      )}
+      {!loading && runs.length === 0 && (
+        <p className="text-sm text-muted-foreground">{t('flows.runs.empty')}</p>
+      )}
+      {runs.length > 0 && (
+        <ol className="space-y-2">
+          {runs.map((r) => (
+            <RunRow key={r.id} flowId={flowId} run={r} />
+          ))}
+        </ol>
+      )}
+    </Card>
+  )
+}
+
+function RunRow({ flowId, run }: { flowId: string; run: FlowRun }) {
+  const started = new Date(run.started_at)
+  const finished = run.finished_at ? new Date(run.finished_at) : null
+  const durationMs = finished ? finished.getTime() - started.getTime() : null
+  return (
+    <li>
+      <Link
+        to="/app/flows/$id/runs/$runId"
+        params={{ id: flowId, runId: run.id }}
+        className="flex items-center gap-3 rounded-md border border-border bg-card p-3 transition-colors hover:bg-accent"
+      >
+        <RunStatusIcon status={run.status} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm">
+            {started.toLocaleString()}
+            {durationMs != null && (
+              <span className="ml-2 text-xs text-muted-foreground">· {formatDuration(durationMs)}</span>
+            )}
+          </p>
+          {run.error && <p className="mt-0.5 text-xs text-destructive line-clamp-1">{run.error}</p>}
+        </div>
+        <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+      </Link>
+    </li>
+  )
+}
+
+function RunStatusIcon({ status }: { status: FlowRunStatus }) {
+  const cls = 'h-4 w-4 shrink-0'
+  switch (status) {
+    case 'succeeded':
+      return <CircleCheck className={cn(cls, 'text-primary')} />
+    case 'failed':
+      return <CircleX className={cn(cls, 'text-destructive')} />
+    case 'awaiting_approval':
+      return <Hourglass className={cn(cls, 'text-amber-500')} />
+    case 'running':
+      return <CircleDot className={cn(cls, 'text-blue-500 animate-pulse')} />
+    case 'queued':
+    default:
+      return <CircleDot className={cn(cls, 'text-muted-foreground')} />
+  }
+}
+
+// --- helpers --------------------------------------------------------------
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms} ms`
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s} s`
+  const m = Math.floor(s / 60)
+  const rs = s % 60
+  return rs === 0 ? `${m} min` : `${m} min ${rs} s`
+}
+
+// Inline copy of the cron humaniser used for the trigger card. Keeping
+// it here so the detail view doesn't need to import scheduleLabel and
+// strip the non-cron branches.
+function humanCronCs(cron: string): string {
+  if (!cron) return 'cron'
+  const parts = cron.split(/\s+/)
+  if (parts.length < 5) return cron
+  const [min, hour, dom, mon, dow] = parts
+  if (min.startsWith('*/') && hour === '*' && dom === '*' && mon === '*' && dow === '*') return `Každých ${min.slice(2)} minut`
+  if (min === '0' && hour.startsWith('*/') && dom === '*' && mon === '*' && dow === '*') return `Každé ${hour.slice(2)} hodiny`
+  if (!min.includes('*') && !hour.includes('*') && dom === '*' && mon === '*' && dow === '*') return `Denně v ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
+  if (!min.includes('*') && !hour.includes('*') && dom === '*' && mon === '*' && dow === '1') return `Každé pondělí v ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
+  if (!min.includes('*') && !hour.includes('*') && dom === '*' && mon === '*' && dow === '1-5') return `Pracovní dny v ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
+  if (!min.includes('*') && !hour.includes('*') && dom === '*' && mon === '*' && dow === '5') return `Každý pátek v ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
+  if (!min.includes('*') && hour === '*' && dom === '*' && mon === '*' && dow === '*') return `Každou hodinu v :${min.padStart(2, '0')}`
+  return cron
+}
+
+// Suppress unused-import lint when CONNECTOR_LABELS is re-exported only.
+void CONNECTOR_LABELS

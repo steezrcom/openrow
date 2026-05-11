@@ -30,6 +30,9 @@ export const en = {
   'flows.mode.auto.hint': 'Execute writes unattended. Use only after dry-run looks good.',
   'flows.allowlist': 'Allowed tools',
   'flows.allowlist.hint': 'The agent can only call tools you tick here. Write tools are flagged — be especially careful with them.',
+  'flows.allowlist.internal': 'Internal tools',
+  'flows.status': 'Status',
+  'flows.webhook.hint': 'POST a JSON body to the webhook URL; the flow is triggered for each call.',
   'flows.tool.writes': 'Writes',
   'flows.trigger': 'Trigger',
   'flows.trigger.manual': 'Manual',
@@ -134,6 +137,7 @@ export const en = {
   'common.cancel': 'Cancel',
   'common.delete': 'Delete',
   'common.create': 'Create',
+  'common.edit': 'Edit',
   'common.loading': 'Loading…',
 }
 
