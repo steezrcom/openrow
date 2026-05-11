@@ -1,10 +1,13 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, Plus, Workflow } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronRight, GitBranch, List, Plus, Workflow } from 'lucide-react'
 import { api, type Flow } from '@/lib/api'
 import { Button, Card } from '@/components/ui'
+import { FlowGraph } from '@/components/FlowGraph'
 import { ModeBadge, TriggerBadge } from './app.flows'
 import { useT } from '@/lib/i18n'
+import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/app/flows/')({
   component: FlowsPage,
@@ -14,9 +17,13 @@ function FlowsPage() {
   const t = useT()
   const navigate = useNavigate()
   const flows = useQuery({ queryKey: ['flows'], queryFn: api.listFlows })
+  const [view, setView] = useState<'list' | 'graph'>('graph')
+
+  const data = flows.data ?? []
+  const containerMax = view === 'graph' ? 'max-w-7xl' : 'max-w-5xl'
 
   return (
-    <div className="mx-auto max-w-5xl px-8 py-10">
+    <div className={cn('mx-auto px-8 py-10', containerMax)}>
       <header className="mb-6 flex items-start justify-between gap-4">
         <div>
           <p className="text-xs text-muted-foreground">
@@ -30,15 +37,18 @@ function FlowsPage() {
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">{t('flows.hint')}</p>
         </div>
-        <Button onClick={() => navigate({ to: '/app/flows/new' })}>
-          <Plus className="mr-1 h-3.5 w-3.5" />
-          {t('flows.new')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <ViewToggle view={view} onChange={setView} />
+          <Button onClick={() => navigate({ to: '/app/flows/new' })}>
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            {t('flows.new')}
+          </Button>
+        </div>
       </header>
 
       {flows.isLoading && <p className="text-sm text-muted-foreground">{t('common.loading')}</p>}
 
-      {!flows.isLoading && (flows.data ?? []).length === 0 && (
+      {!flows.isLoading && data.length === 0 && (
         <Card className="p-8 text-center">
           <Workflow className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
           <h2 className="font-medium">{t('flows.empty.title')}</h2>
@@ -48,11 +58,55 @@ function FlowsPage() {
         </Card>
       )}
 
-      <div className="grid gap-3">
-        {(flows.data ?? []).map((f) => (
-          <FlowRow key={f.id} flow={f} />
-        ))}
-      </div>
+      {!flows.isLoading && data.length > 0 && view === 'graph' && (
+        <Card className="p-4">
+          <FlowGraph flows={data} />
+        </Card>
+      )}
+
+      {!flows.isLoading && data.length > 0 && view === 'list' && (
+        <div className="grid gap-3">
+          {data.map((f) => (
+            <FlowRow key={f.id} flow={f} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ViewToggle({
+  view,
+  onChange,
+}: {
+  view: 'list' | 'graph'
+  onChange: (v: 'list' | 'graph') => void
+}) {
+  const t = useT()
+  return (
+    <div className="inline-flex items-center rounded-md border border-border bg-card p-0.5">
+      <button
+        type="button"
+        onClick={() => onChange('graph')}
+        className={cn(
+          'inline-flex items-center gap-1 rounded px-2 py-1 text-xs',
+          view === 'graph' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        <GitBranch className="h-3 w-3" />
+        {t('flows.view.graph')}
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('list')}
+        className={cn(
+          'inline-flex items-center gap-1 rounded px-2 py-1 text-xs',
+          view === 'list' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        <List className="h-3 w-3" />
+        {t('flows.view.list')}
+      </button>
     </div>
   )
 }

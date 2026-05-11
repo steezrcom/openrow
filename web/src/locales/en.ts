@@ -11,6 +11,8 @@ export const en = {
   'nav.approvals': 'Approvals',
 
   'flows.hint': 'Automations the agent runs on your behalf. Triggered manually for now; more triggers coming.',
+  'flows.view.graph': 'Graph',
+  'flows.view.list': 'List',
   'flows.new': 'New flow',
   'flows.new.hint': 'Describe what the flow should do. The agent uses the tools you allow, within the permission mode you pick.',
   'flows.new.allowlistRequired': 'Pick at least one tool for the flow to use.',

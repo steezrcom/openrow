@@ -11,6 +11,8 @@ export const cs: Partial<typeof en> = {
   'nav.logout': 'Odhlásit se',
   'nav.flows': 'Toky',
   'nav.approvals': 'Schválení',
+  'flows.view.graph': 'Graf',
+  'flows.view.list': 'Seznam',
   'flows.mode.dry_run': 'Nasucho',
   'flows.mode.approve': 'Se schválením',
   'flows.mode.auto': 'Auto',
