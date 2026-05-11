@@ -24,6 +24,7 @@ import {
   type RefOption,
 } from '@/lib/api'
 import { Button, Card, Input, Pill } from '@/components/ui'
+import { InfoBadge } from '@/components/Tooltip'
 import { EmptyState } from '@/components/EmptyState'
 import { Skeleton, SkeletonRows } from '@/components/Skeleton'
 import { Drawer } from '@/components/Drawer'
@@ -454,6 +455,19 @@ function Toolbar({
   )
 }
 
+const FIELD_HINTS: Record<string, string> = {
+  variable_symbol: 'Variabilní symbol — propojuje platbu s fakturou.',
+  vs: 'Variabilní symbol — propojuje platbu s fakturou.',
+  constant_symbol: 'Konstantní symbol — typ platby (kód).',
+  ks: 'Konstantní symbol — typ platby (kód).',
+  specific_symbol: 'Specifický symbol — doplňková identifikace platby.',
+  ss: 'Specifický symbol — doplňková identifikace platby.',
+  ico: 'IČO — Identifikační číslo osoby (CZ business ID).',
+  dic: 'DIČ — Daňové identifikační číslo (CZ VAT ID).',
+  vat_rate: 'Sazba DPH v procentech.',
+  vat_mode: 'Režim DPH — standard / reverse_charge / exempt.',
+}
+
 function RowsTable({
   entity,
   rows,
@@ -494,17 +508,25 @@ function RowsTable({
     <table className="min-w-full text-sm">
       <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
         <tr className="border-b border-border text-left">
-          {entity.fields.map((f) => (
-            <SortableTH
-              key={f.id}
-              label={f.display_name}
-              field={f.name}
-              sort={sort}
-              dir={dir}
-              onSort={onSort}
-              align={isNumericType(f.data_type) ? 'right' : 'left'}
-            />
-          ))}
+          {entity.fields.map((f) => {
+            const hint = FIELD_HINTS[f.name.toLowerCase()]
+            const label = hint ? (
+              <InfoBadge content={hint}>{f.display_name}</InfoBadge>
+            ) : (
+              f.display_name
+            )
+            return (
+              <SortableTH
+                key={f.id}
+                label={label}
+                field={f.name}
+                sort={sort}
+                dir={dir}
+                onSort={onSort}
+                align={isNumericType(f.data_type) ? 'right' : 'left'}
+              />
+            )
+          })}
           <SortableTH
             label="Updated"
             field="updated_at"
@@ -694,7 +716,7 @@ function SortableTH({
   onSort,
   align = 'left',
 }: {
-  label: string
+  label: React.ReactNode
   field: string
   sort: string | undefined
   dir: 'asc' | 'desc' | undefined

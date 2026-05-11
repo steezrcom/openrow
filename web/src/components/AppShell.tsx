@@ -1,17 +1,20 @@
 import { Link, useMatchRoute, useNavigate } from '@tanstack/react-router'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import {
+  Bot,
   Building2,
   ChevronsUpDown,
   Clock,
   Database,
   LayoutDashboard,
   LogOut,
+  Plug,
   Plus,
   Search,
   Settings,
   ShieldAlert,
+  SlidersHorizontal,
   Sparkles,
   Workflow,
 } from 'lucide-react'
@@ -81,7 +84,14 @@ function Sidebar({
     },
   })
 
-  const isDashboardActive = Boolean(match({ to: '/app', fuzzy: false }))
+  const isHomeActive = Boolean(match({ to: '/app', fuzzy: false }))
+
+  const approvals = useQuery({
+    queryKey: ['flow-approvals'],
+    queryFn: api.listFlowApprovals,
+    refetchInterval: 30000,
+  })
+  const pendingApprovals = (approvals.data ?? []).length
 
   return (
     <aside className="sticky top-0 flex h-screen w-64 flex-col border-r border-border bg-card/30">
@@ -99,42 +109,64 @@ function Sidebar({
       </div>
 
       <nav className="mt-6 flex-1 overflow-y-auto px-3 pb-4">
-        <NavItem to="/app" icon={<Database className="h-4 w-4" />} active={isDashboardActive}>
+        <NavItem to="/app" icon={<Database className="h-4 w-4" />} active={isHomeActive}>
           {t('nav.home')}
         </NavItem>
-        <NavItem
-          to="/app/time"
-          icon={<Clock className="h-4 w-4" />}
-          active={Boolean(match({ to: '/app/time' }))}
-        >
-          {t('nav.timesheet')}
-        </NavItem>
-        <NavItem
-          to="/app/flows"
-          icon={<Workflow className="h-4 w-4" />}
-          active={Boolean(match({ to: '/app/flows', fuzzy: true }))}
-        >
-          {t('nav.flows')}
-        </NavItem>
-        <NavItem
-          to="/app/approvals"
-          icon={<ShieldAlert className="h-4 w-4" />}
-          active={Boolean(match({ to: '/app/approvals' }))}
-        >
-          {t('nav.approvals')}
-        </NavItem>
-        <NavItem
-          to="/app/settings/preferences"
-          icon={<Settings className="h-4 w-4" />}
-          active={
-            Boolean(match({ to: '/app/settings/preferences' })) ||
-            Boolean(match({ to: '/app/settings/llm' }))
-          }
-        >
-          {t('nav.settings')}
-        </NavItem>
 
-        <div className="mt-5 flex items-center justify-between px-3 pb-1">
+        <SectionLabel>{t('nav.section.work')}</SectionLabel>
+
+        {loadingEntities && (
+          <div className="space-y-1 px-2 py-1">
+            <div className="h-7 animate-pulse rounded-md bg-muted/40" />
+            <div className="h-7 animate-pulse rounded-md bg-muted/40" />
+          </div>
+        )}
+
+        {!loadingEntities && entities.length === 0 && (
+          <p className="px-3 py-2 text-xs text-muted-foreground">
+            None yet. Ask Claude to design one.
+          </p>
+        )}
+
+        {entities.map((e) => {
+          const isActive = Boolean(
+            match({ to: '/app/entities/$name', params: { name: e.name } })
+          )
+          return (
+            <Link
+              key={e.id}
+              to="/app/entities/$name"
+              params={{ name: e.name }}
+              className={cn(
+                'group flex items-center justify-between rounded-md px-3 py-1.5 text-sm',
+                'transition-colors hover:bg-accent',
+                isActive ? 'bg-accent text-foreground' : 'text-muted-foreground'
+              )}
+            >
+              <span className="truncate">{e.display_name}</span>
+              <span className="font-mono text-[10px] text-muted-foreground/70">{e.name}</span>
+            </Link>
+          )
+        })}
+
+        <Link
+          to="/app"
+          className="mt-1 flex items-center gap-2 rounded-md border border-dashed border-border/80 px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+        >
+          <Plus className="h-3.5 w-3.5" /> {t('nav.newEntity')}
+        </Link>
+
+        <div className="mt-3">
+          <NavItem
+            to="/app/time"
+            icon={<Clock className="h-4 w-4" />}
+            active={Boolean(match({ to: '/app/time' }))}
+          >
+            {t('nav.timesheet')}
+          </NavItem>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between px-3 pb-1">
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
             {t('nav.dashboards')}
           </span>
@@ -176,48 +208,47 @@ function Sidebar({
           )
         })}
 
-        <SectionLabel>{t('nav.entities')}</SectionLabel>
+        <SectionLabel>{t('nav.section.money')}</SectionLabel>
 
-        {loadingEntities && (
-          <div className="space-y-1 px-2 py-1">
-            <div className="h-7 animate-pulse rounded-md bg-muted/40" />
-            <div className="h-7 animate-pulse rounded-md bg-muted/40" />
-          </div>
-        )}
-
-        {!loadingEntities && entities.length === 0 && (
-          <p className="px-3 py-2 text-xs text-muted-foreground">
-            None yet. Ask Claude to design one.
-          </p>
-        )}
-
-        {entities.map((e) => {
-          const isActive = Boolean(
-            match({ to: '/app/entities/$name', params: { name: e.name } })
-          )
-          return (
-            <Link
-              key={e.id}
-              to="/app/entities/$name"
-              params={{ name: e.name }}
-              className={cn(
-                'group flex items-center justify-between rounded-md px-3 py-1.5 text-sm',
-                'transition-colors hover:bg-accent',
-                isActive ? 'bg-accent text-foreground' : 'text-muted-foreground'
-              )}
-            >
-              <span className="truncate">{e.display_name}</span>
-              <span className="font-mono text-[10px] text-muted-foreground/70">{e.name}</span>
-            </Link>
-          )
-        })}
-
-        <Link
-          to="/app"
-          className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border/80 px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+        <NavItem
+          to="/app/flows"
+          icon={<Workflow className="h-4 w-4" />}
+          active={Boolean(match({ to: '/app/flows', fuzzy: true }))}
         >
-          <Plus className="h-3.5 w-3.5" /> {t('nav.newEntity')}
-        </Link>
+          {t('nav.flows')}
+        </NavItem>
+        <NavItem
+          to="/app/approvals"
+          icon={<ShieldAlert className="h-4 w-4" />}
+          active={Boolean(match({ to: '/app/approvals' }))}
+          badge={pendingApprovals > 0 ? pendingApprovals : undefined}
+        >
+          {t('nav.approvals')}
+        </NavItem>
+
+        <SectionLabel>{t('nav.section.setup')}</SectionLabel>
+
+        <NavItem
+          to="/app/settings/connectors"
+          icon={<Plug className="h-4 w-4" />}
+          active={Boolean(match({ to: '/app/settings/connectors' }))}
+        >
+          {t('nav.connectors')}
+        </NavItem>
+        <NavItem
+          to="/app/settings/llm"
+          icon={<Bot className="h-4 w-4" />}
+          active={Boolean(match({ to: '/app/settings/llm' }))}
+        >
+          {t('nav.llm')}
+        </NavItem>
+        <NavItem
+          to="/app/settings/preferences"
+          icon={<SlidersHorizontal className="h-4 w-4" />}
+          active={Boolean(match({ to: '/app/settings/preferences' }))}
+        >
+          {t('nav.preferences')}
+        </NavItem>
       </nav>
 
       <CreateDashboardModal open={newDashboardOpen} onClose={() => setNewDashboardOpen(false)} />
@@ -249,11 +280,13 @@ function NavItem({
   to,
   icon,
   active,
+  badge,
   children,
 }: {
   to: string
   icon: ReactNode
   active?: boolean
+  badge?: number
   children: ReactNode
 }) {
   return (
@@ -265,7 +298,12 @@ function NavItem({
       )}
     >
       {icon}
-      <span>{children}</span>
+      <span className="flex-1">{children}</span>
+      {badge != null && badge > 0 && (
+        <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500/15 px-1.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+          {badge}
+        </span>
+      )}
     </Link>
   )
 }

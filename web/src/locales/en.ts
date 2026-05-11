@@ -9,6 +9,12 @@ export const en = {
   'nav.logout': 'Log out',
   'nav.flows': 'Flows',
   'nav.approvals': 'Approvals',
+  'nav.connectors': 'Connectors',
+  'nav.llm': 'LLM',
+  'nav.preferences': 'Preferences',
+  'nav.section.work': 'Work',
+  'nav.section.money': 'Money',
+  'nav.section.setup': 'Setup',
 
   'flows.hint': 'Automations the agent runs on your behalf. Triggered manually for now; more triggers coming.',
   'flows.view.graph': 'Graph',

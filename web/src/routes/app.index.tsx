@@ -19,8 +19,16 @@ import { useEntities } from '@/hooks/useEntities'
 import { useDashboards } from '@/hooks/useDashboards'
 import { useMe } from '@/hooks/useMe'
 import { Button, Card, Pill, Textarea } from '@/components/ui'
+import { InfoBadge } from '@/components/Tooltip'
 import { toast } from '@/components/Toast'
 import { cn } from '@/lib/utils'
+
+const STAT_HINTS: Record<string, string> = {
+  'Čeká na schválení': "Toky v režimu 'approve' pozastavily zápis. Otevři a rozhodni.",
+  'Faktury po splatnosti': 'Vystavené faktury, jejichž splatnost už uplynula a nejsou označeny jako zaplacené.',
+  'Přijaté faktury k revizi': 'Položky z UOL/banky čekající na schválení proplacení.',
+  'Nepárované platby': 'Příchozí bankovní pohyby bez napárované faktury podle variabilního symbolu.',
+}
 
 export const Route = createFileRoute('/app/')({
   component: Dashboard,
@@ -368,7 +376,13 @@ function StatCard({ icon: Icon, tone, label, value, hint, to }: StatCardProps) {
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          {STAT_HINTS[label] ? (
+            <InfoBadge content={STAT_HINTS[label]}>{label}</InfoBadge>
+          ) : (
+            label
+          )}
+        </p>
         <p className="mt-0.5 text-2xl font-semibold leading-none">{value}</p>
         {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
       </div>
