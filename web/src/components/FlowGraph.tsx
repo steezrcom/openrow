@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import type { Flow } from '@/lib/api'
+import { classifyTool, connectorLabel, connectorSubtitle, cronTime, scheduleLabel } from '@/lib/flow-meta'
 import { cn } from '@/lib/utils'
 
 // FlowGraph renders the tenant's flows as a three-band SVG diagram:
@@ -439,67 +440,6 @@ function bezier(x1: number, y1: number, x2: number, y2: number): string {
   return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`
 }
 
-// --- tool classification --------------------------------------------------
-
-// classifyTool inspects a tool name from the flow's allowlist and returns
-// the connector reference it implies, plus whether the flow reads or
-// writes through it. Internal tools (query_rows, update_row, etc.) and
-// the deterministic reconcile/render tools are ignored — they don't
-// connect to external systems.
-function classifyTool(tool: string): { connector: string; side: 'in' | 'out' } | null {
-  // Connector tools: connector_<id>_<action>
-  if (tool.startsWith('connector_')) {
-    const rest = tool.slice('connector_'.length)
-    const [connector, ...actionParts] = rest.split('_')
-    const action = actionParts.join('_')
-    const side = inferSide(connector, action)
-    return { connector, side }
-  }
-  return null
-}
-
-function inferSide(_connector: string, action: string): 'in' | 'out' {
-  // Heuristic: writes if the action name implies mutation, else read.
-  const writeVerbs = ['create', 'post', 'send', 'update', 'mark', 'pay', 'add']
-  if (writeVerbs.some((v) => action.startsWith(v))) return 'out'
-  return 'in'
-}
-
-const CONNECTOR_LABELS: Record<string, string> = {
-  csas: 'Česká spořitelna',
-  csob: 'ČSOB',
-  fio: 'Fio banka',
-  revolut: 'Revolut Business',
-  uol: 'ÚOL',
-  fakturoid: 'Fakturoid',
-  notion: 'Notion',
-  resend: 'Resend',
-  slack: 'Slack',
-  discord: 'Discord',
-  github: 'GitHub',
-  linear: 'Linear',
-  ares: 'ARES',
-  cnb: 'ČNB',
-  vies: 'VIES',
-  stripe: 'Stripe',
-}
-
-function connectorLabel(id: string): string {
-  return CONNECTOR_LABELS[id] ?? id
-}
-
-function connectorSubtitle(id: string, side: 'in' | 'out'): string {
-  if (['csas', 'csob', 'fio', 'revolut'].includes(id)) return side === 'in' ? 'banking · read' : 'banking'
-  if (id === 'uol') return side === 'in' ? 'accounting · read' : 'accounting · write'
-  if (id === 'notion') return side === 'in' ? 'notion · read' : 'notion · write'
-  if (id === 'resend') return 'e-mail'
-  if (id === 'slack' || id === 'discord') return 'messaging'
-  if (id === 'fakturoid') return side === 'in' ? 'invoicing · read' : 'invoicing · write'
-  return 'connector'
-}
-
-// --- flow categorisation + schedule ---------------------------------------
-
 function categoryRank(f: Flow): number {
   const name = f.name.toLowerCase()
   if (name.includes('sync banky')) return 1
@@ -516,64 +456,6 @@ function categoryRank(f: Flow): number {
   if (name.includes('projekt dokon')) return 12
   if (name.includes('kontrola')) return 13
   return 50
-}
-
-function cronTime(f: Flow): number {
-  if (f.trigger_kind !== 'cron') return 0
-  const cron = (f.trigger_config?.cron as string) ?? ''
-  // Parse "minute hour ..." — sort by hour*60+minute. Wildcards => 0.
-  const [m = '*', h = '*'] = cron.split(/\s+/)
-  const mNum = m.startsWith('*') ? 0 : parseInt(m.replace('*/', '0'), 10) || 0
-  const hNum = h.startsWith('*') ? 0 : parseInt(h, 10) || 0
-  return hNum * 60 + mNum
-}
-
-function scheduleLabel(f: Flow): string {
-  if (f.trigger_kind !== 'cron') {
-    if (f.trigger_kind === 'manual') return 'Spouští se ručně'
-    if (f.trigger_kind === 'webhook') return 'Webhook'
-    if (f.trigger_kind === 'entity_event') return 'Při změně řádku'
-    return f.trigger_kind
-  }
-  const cron = (f.trigger_config?.cron as string) ?? ''
-  return humanCron(cron)
-}
-
-function humanCron(cron: string): string {
-  if (!cron) return 'cron'
-  const parts = cron.split(/\s+/)
-  if (parts.length < 5) return cron
-  const [min, hour, dom, mon, dow] = parts
-
-  // Every N minutes
-  if (min.startsWith('*/') && hour === '*' && dom === '*' && mon === '*' && dow === '*') {
-    return `Každých ${min.slice(2)} min`
-  }
-  // Every N hours
-  if (min === '0' && hour.startsWith('*/') && dom === '*' && mon === '*' && dow === '*') {
-    return `Každé ${hour.slice(2)} h`
-  }
-  // At HH:MM every day
-  if (!min.includes('*') && !hour.includes('*') && dom === '*' && mon === '*' && dow === '*') {
-    return `Denně v ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
-  }
-  // At HH:MM every Monday
-  if (!min.includes('*') && !hour.includes('*') && dom === '*' && mon === '*' && dow === '1') {
-    return `Po v ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
-  }
-  // At HH:MM every weekday
-  if (!min.includes('*') && !hour.includes('*') && dom === '*' && mon === '*' && dow === '1-5') {
-    return `Po-Pá v ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
-  }
-  // At HH:MM every Friday
-  if (!min.includes('*') && !hour.includes('*') && dom === '*' && mon === '*' && dow === '5') {
-    return `Pá v ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
-  }
-  // At MM past every hour
-  if (!min.includes('*') && hour === '*' && dom === '*' && mon === '*' && dow === '*') {
-    return `Každou hodinu v :${min.padStart(2, '0')}`
-  }
-  return cron
 }
 
 function truncate(s: string, n: number): string {
