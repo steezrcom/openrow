@@ -5,8 +5,9 @@ import { useForm } from 'react-hook-form'
 import { ChevronRight, Copy } from 'lucide-react'
 import { api, ApiError, type FlowMode, type FlowTriggerKind } from '@/lib/api'
 import { useEntities } from '@/hooks/useEntities'
-import { Button, Card, Input, Label, Textarea } from '@/components/ui'
+import { Button, Card, Input, Kbd, KBD, Label, Textarea } from '@/components/ui'
 import { useT } from '@/lib/i18n'
+import { mod } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/app/flows/new')({
@@ -105,6 +106,15 @@ function NewFlowPage() {
     setSelected(next)
   }
 
+  function onValid(v: FormValues) {
+    setError(null)
+    if (selected.size === 0) {
+      setError(t('flows.new.allowlistRequired'))
+      return
+    }
+    save.mutate(v)
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-8 py-10">
       <header className="mb-6">
@@ -122,14 +132,13 @@ function NewFlowPage() {
       <Card className="p-6">
         <form
           className="space-y-5"
-          onSubmit={handleSubmit((v) => {
-            setError(null)
-            if (selected.size === 0) {
-              setError(t('flows.new.allowlistRequired'))
-              return
+          onSubmit={handleSubmit(onValid)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+              e.preventDefault()
+              handleSubmit(onValid)()
             }
-            save.mutate(v)
-          })}
+          }}
         >
           <div className="space-y-2">
             <Label htmlFor="name">{t('flows.name')}</Label>
@@ -293,6 +302,10 @@ function NewFlowPage() {
           <div className="flex items-center gap-2">
             <Button type="submit" disabled={isSubmitting || save.isPending}>
               {save.isPending ? t('common.loading') : t('common.create')}
+              <span className="ml-2 hidden gap-0.5 opacity-60 sm:inline-flex">
+                <Kbd>{mod()}</Kbd>
+                <Kbd>{KBD.enter}</Kbd>
+              </span>
             </Button>
             <Link to="/app/flows">
               <Button type="button" variant="ghost">{t('common.cancel')}</Button>

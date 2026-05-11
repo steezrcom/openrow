@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ChevronRight, ShieldAlert } from 'lucide-react'
 import { api, type FlowApproval } from '@/lib/api'
-import { Button, Card } from '@/components/ui'
+import { Button, Card, Kbd, KBD } from '@/components/ui'
 import { EmptyState } from '@/components/EmptyState'
 import { SkeletonRows } from '@/components/Skeleton'
 import { toast } from '@/components/Toast'
 import { useT } from '@/lib/i18n'
+import { mod } from '@/lib/platform'
 
 export const Route = createFileRoute('/app/approvals')({
   component: ApprovalsPage,
@@ -111,6 +112,14 @@ function ApprovalCard({ approval }: { approval: FlowApproval }) {
         <input
           value={reason}
           onChange={(e) => setReason(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+              e.preventDefault()
+              resolve.mutate({ approve: true })
+            } else if (e.key === 'Escape') {
+              e.currentTarget.blur()
+            }
+          }}
           placeholder={t('approvals.rejectionReason')}
           className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm"
         />
@@ -123,6 +132,10 @@ function ApprovalCard({ approval }: { approval: FlowApproval }) {
         </Button>
         <Button onClick={() => resolve.mutate({ approve: true })} disabled={resolve.isPending}>
           {t('approvals.approve')}
+          <span className="ml-2 hidden gap-0.5 opacity-60 sm:inline-flex">
+            <Kbd>{mod()}</Kbd>
+            <Kbd>{KBD.enter}</Kbd>
+          </span>
         </Button>
       </div>
 

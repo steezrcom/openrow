@@ -9,11 +9,12 @@ import {
   type Connector,
   type ConnectorConfigSafe,
 } from '@/lib/api'
-import { Button, Input, Label } from '@/components/ui'
+import { Button, Input, Kbd, KBD, Label } from '@/components/ui'
 import { Modal } from '@/components/Modal'
 import { SettingsShell } from '@/components/SettingsShell'
 import { toast } from '@/components/Toast'
 import { useT } from '@/lib/i18n'
+import { mod } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/app/settings/connectors')({
@@ -205,6 +206,20 @@ function ConfigureModal({
             setError(t('connectors.fillRequired'))
           },
         )}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault()
+            handleSubmit(
+              (v) => {
+                setError(null)
+                save.mutate(v)
+              },
+              () => {
+                setError(t('connectors.fillRequired'))
+              },
+            )()
+          }
+        }}
       >
         <p className="text-sm text-muted-foreground">{connector.description}</p>
         {connector.homepage && (
@@ -302,6 +317,10 @@ function ConfigureModal({
             </Button>
             <Button type="submit" disabled={isSubmitting || save.isPending}>
               {save.isPending ? t('common.loading') : t('common.save')}
+              <span className="ml-2 hidden gap-0.5 opacity-60 sm:inline-flex">
+                <Kbd>{mod()}</Kbd>
+                <Kbd>{KBD.enter}</Kbd>
+              </span>
             </Button>
           </div>
         </div>

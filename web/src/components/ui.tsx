@@ -64,6 +64,28 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   )
 }
 
+export function Kbd({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <kbd
+      className={cn(
+        'rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground',
+        className,
+      )}
+    >
+      {children}
+    </kbd>
+  )
+}
+
+export const KBD = {
+  cmd: '⌘',
+  ctrl: 'Ctrl',
+  shift: '⇧',
+  enter: '↵',
+  esc: 'Esc',
+  k: 'K',
+} as const
+
 export function Pill({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
   return (
     <span

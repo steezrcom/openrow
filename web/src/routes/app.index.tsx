@@ -18,9 +18,10 @@ import { api, ApiError } from '@/lib/api'
 import { useEntities } from '@/hooks/useEntities'
 import { useDashboards } from '@/hooks/useDashboards'
 import { useMe } from '@/hooks/useMe'
-import { Button, Card, Pill, Textarea } from '@/components/ui'
+import { Button, Card, Kbd, KBD, Pill, Textarea } from '@/components/ui'
 import { InfoBadge } from '@/components/Tooltip'
 import { toast } from '@/components/Toast'
+import { mod } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 
 const STAT_HINTS: Record<string, string> = {
@@ -62,7 +63,12 @@ function Dashboard() {
       </section>
 
       <p className="mt-10 text-center text-xs text-muted-foreground">
-        Tip: stiskni <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd> pro rychlé hledání.
+        Tip: stiskni{' '}
+        <span className="inline-flex gap-0.5">
+          <Kbd>{mod()}</Kbd>
+          <Kbd>{KBD.k}</Kbd>
+        </span>{' '}
+        pro rychlé hledání.
       </p>
     </div>
   )
@@ -487,12 +493,20 @@ function AskAssistant() {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Vytvoření selhalo.'),
   })
 
+  const submit = handleSubmit((v) => {
+    propose.mutate(v.description)
+  })
+
   return (
     <Card className="overflow-hidden border-primary/30 bg-gradient-to-br from-card to-card/70">
       <form
-        onSubmit={handleSubmit((v) => {
-          propose.mutate(v.description)
-        })}
+        onSubmit={submit}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault()
+            submit()
+          }
+        }}
       >
         <div className="flex items-start gap-3 p-4">
           <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
@@ -525,6 +539,10 @@ function AskAssistant() {
           </span>
           <Button type="submit" disabled={isSubmitting || propose.isPending}>
             {propose.isPending ? 'Navrhuji…' : 'Vytvořit entitu'}
+            <span className="ml-2 hidden gap-0.5 opacity-60 sm:inline-flex">
+              <Kbd>{mod()}</Kbd>
+              <Kbd>{KBD.enter}</Kbd>
+            </span>
           </Button>
         </div>
       </form>

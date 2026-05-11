@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   AlertCircle,
   Calendar,
@@ -21,7 +21,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { api, ApiError, type Flow, type FlowMode, type FlowRun, type FlowRunStatus } from '@/lib/api'
-import { Button, Card, Input } from '@/components/ui'
+import { Button, Card, Input, Kbd } from '@/components/ui'
 import { EmptyState } from '@/components/EmptyState'
 import { Skeleton, SkeletonRows } from '@/components/Skeleton'
 import { FlowDiagram } from '@/components/FlowDiagram'
@@ -85,6 +85,22 @@ function FlowDetailPage() {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Změna selhala.'),
   })
 
+  const canRun = Boolean(flow.data?.enabled) && !trigger.isPending
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'r' && e.key !== 'R') return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (!canRun) return
+      e.preventDefault()
+      setError(null)
+      trigger.mutate()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [canRun, trigger])
+
   if (!flow.data) return <FlowDetailSkeleton />
 
   const f = flow.data
@@ -124,6 +140,9 @@ function FlowDetailPage() {
             >
               <Play className="mr-1 h-3.5 w-3.5" />
               {trigger.isPending ? t('flows.running') : t('flows.runNow')}
+              <span className="ml-2 hidden opacity-60 sm:inline-flex">
+                <Kbd>R</Kbd>
+              </span>
             </Button>
             <Button
               variant="ghost"
