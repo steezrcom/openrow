@@ -618,7 +618,7 @@ func (a *Agent) addConnectorTools(ctx context.Context, tenantID string, add func
 				Schema:      action.Schema,
 				Mutates:     action.Mutates,
 				Handler: func(ctx context.Context, input json.RawMessage) ExecResult {
-					result, err := action.Handler(ctx, cfg.Credentials, input)
+					result, err := action.Handler(connectors.WithTenant(ctx, tenantID), cfg.Credentials, input)
 					if err != nil {
 						return ExecResult{Err: err}
 					}

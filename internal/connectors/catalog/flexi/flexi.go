@@ -43,4 +43,36 @@ func testCreds(ctx context.Context, creds map[string]string) error {
 	return err
 }
 
-func actions() []connectors.Action { return nil }
+func actions() []connectors.Action {
+	return []connectors.Action{
+		{
+			ID:          "query",
+			Name:        "Query Flexi",
+			Description: "Read rows from a Flexi evidence by canonical role. Use roles like 'customer', 'product', 'invoice_outgoing'. Returns rows with canonical-role keys (mapped from Czech column names).",
+			Schema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"role": map[string]any{
+						"type":        "string",
+						"description": "Canonical semantic role. Must be one mapped on this binding (call list_external_bindings to see roles).",
+					},
+					"filter": map[string]any{
+						"type":        "object",
+						"description": "Equality filter; keys are canonical roles (e.g. {\"vat_id_cz\":\"CZ12345678\"}).",
+					},
+					"fields": map[string]any{
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "Subset of canonical roles to project. Empty = all auto-mapped fields.",
+					},
+					"limit": map[string]any{
+						"type":        "integer",
+						"description": "Max rows; default 100, max 200.",
+					},
+				},
+				"required": []string{"role"},
+			},
+			Handler: queryHandler,
+		},
+	}
+}

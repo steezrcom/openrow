@@ -129,6 +129,13 @@ func (c *Client) GetSamples(ctx context.Context, evidence string, limit int) ([]
 	q := url.Values{}
 	q.Set("limit", strconv.Itoa(limit))
 	q.Set("detail", "full")
+	return c.GetSamplesQuery(ctx, evidence, q)
+}
+
+// GetSamplesQuery is GetSamples with caller-controlled query params (used by
+// the read-through action so callers can pass `where` filters and explicit
+// limits).
+func (c *Client) GetSamplesQuery(ctx context.Context, evidence string, q url.Values) ([]map[string]any, error) {
 	body, err := c.get(ctx, fmt.Sprintf("%s.json", url.PathEscape(evidence)), q)
 	if err != nil {
 		return nil, err

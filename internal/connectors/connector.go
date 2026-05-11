@@ -96,3 +96,18 @@ type Action struct {
 
 // ActionHandler executes a single invocation of a connector action.
 type ActionHandler func(ctx context.Context, creds map[string]string, input json.RawMessage) (any, error)
+
+type tenantKey struct{}
+
+// WithTenant attaches the caller's tenant ID to ctx so connector action
+// handlers can resolve per-tenant state (e.g. discovery mappings).
+func WithTenant(ctx context.Context, tenantID string) context.Context {
+	return context.WithValue(ctx, tenantKey{}, tenantID)
+}
+
+// TenantFromContext returns the tenant ID attached via WithTenant, or "" if
+// none. Handlers that require it should check and return an explicit error.
+func TenantFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(tenantKey{}).(string)
+	return v
+}
