@@ -21,6 +21,7 @@ import { useEntities } from '@/hooks/useEntities'
 import { useDashboards } from '@/hooks/useDashboards'
 import { cn } from '@/lib/utils'
 import { ChatPanel } from '@/components/ChatPanel'
+import { CommandPalette } from '@/components/CommandPalette'
 import { CreateDashboardModal } from '@/components/CreateDashboardModal'
 import { TimerWidget } from '@/components/TimerWidget'
 import { useT } from '@/lib/i18n'
@@ -44,6 +45,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       />
       <main className="flex-1 overflow-x-hidden">{children}</main>
       <ChatPanel />
+      <CommandPalette />
     </div>
   )
 }
