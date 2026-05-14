@@ -105,7 +105,7 @@ function DashboardPage() {
       {reports.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted-foreground">
           <p>No reports yet.</p>
-          <p className="mt-1">Ask Claude to add one — e.g. "add a revenue-by-month line chart."</p>
+          <p className="mt-1">Ask the agent to add one, e.g. "add a revenue-by-month line chart."</p>
         </Card>
       ) : (
         <SortableReports

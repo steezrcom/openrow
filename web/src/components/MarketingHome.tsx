@@ -147,7 +147,7 @@ function ChatPreview() {
             <Sparkles className="h-3.5 w-3.5" />
           </span>
           <span className="text-xs font-medium">Chat</span>
-          <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground">claude · sonnet</span>
+          <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground">agent</span>
         </div>
         <div className="space-y-3 text-sm">
           <div className="rounded-md bg-muted/40 px-3 py-2 leading-relaxed">
@@ -294,7 +294,7 @@ function AgencyStory() {
               </li>
               <li className="flex gap-3">
                 <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-medium text-primary">3</span>
-                <span><span className="text-foreground">06:30.</span> Uncategorised outflows get classified by Claude into personal / production / overhead / other, with anything ambiguous flagged for review.</span>
+                <span><span className="text-foreground">06:30.</span> Uncategorised outflows get classified by the agent into personal / production / overhead / other, with anything ambiguous flagged for review.</span>
               </li>
               <li className="flex gap-3">
                 <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-medium text-primary">4</span>

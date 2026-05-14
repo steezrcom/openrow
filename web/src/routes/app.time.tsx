@@ -262,7 +262,7 @@ function EmptyState() {
       <Clock className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
       <h2 className="font-medium">Time tracking isn't set up yet</h2>
       <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-        Install the Agency template on the Home screen, or ask Claude to add a <code>time_entries</code> entity.
+        Install the Agency template on the Home screen, or ask the agent to add a <code>time_entries</code> entity.
       </p>
       <div className="mt-4">
         <Link to="/app">

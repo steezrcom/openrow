@@ -67,7 +67,7 @@ export function CreateDashboardModal({
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          After creating, ask Claude in the chat to add reports — e.g. "add a revenue by month line chart."
+          After creating, ask the agent in the chat to add reports, e.g. "add a revenue by month line chart."
         </p>
       </form>
     </Modal>

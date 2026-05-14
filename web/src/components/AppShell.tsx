@@ -124,7 +124,7 @@ function Sidebar({
 
         {!loadingEntities && entities.length === 0 && (
           <p className="px-3 py-2 text-xs text-muted-foreground">
-            None yet. Ask Claude to design one.
+            None yet. Ask the agent to design one.
           </p>
         )}
 
@@ -185,7 +185,7 @@ function Sidebar({
         )}
         {!loadingDashboards && dashboards.length === 0 && (
           <p className="px-3 py-2 text-xs text-muted-foreground">
-            Create one, or ask Claude to.
+            Create one, or ask the agent.
           </p>
         )}
         {dashboards.map((d) => {
