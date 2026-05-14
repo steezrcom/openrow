@@ -14,13 +14,24 @@ import { Route as ResetRouteImport } from './routes/reset'
 import { Route as OrgsRouteImport } from './routes/orgs'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotRouteImport } from './routes/forgot'
+import { Route as DocsRouteImport } from './routes/docs'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
+import { Route as DocsSelfHostingRouteImport } from './routes/docs.self-hosting'
+import { Route as DocsSecurityRouteImport } from './routes/docs.security'
+import { Route as DocsQuickstartRouteImport } from './routes/docs.quickstart'
+import { Route as DocsLlmRouteImport } from './routes/docs.llm'
+import { Route as DocsHowTosRouteImport } from './routes/docs.how-tos'
+import { Route as DocsConnectorsRouteImport } from './routes/docs.connectors'
+import { Route as DocsConceptsRouteImport } from './routes/docs.concepts'
 import { Route as AppTimeRouteImport } from './routes/app.time'
 import { Route as AppFlowsRouteImport } from './routes/app.flows'
 import { Route as AppApprovalsRouteImport } from './routes/app.approvals'
+import { Route as DocsConnectorsIndexRouteImport } from './routes/docs.connectors.index'
 import { Route as AppFlowsIndexRouteImport } from './routes/app.flows.index'
+import { Route as DocsConnectorsIdRouteImport } from './routes/docs.connectors.$id'
 import { Route as AppSettingsPreferencesRouteImport } from './routes/app.settings.preferences'
 import { Route as AppSettingsLlmRouteImport } from './routes/app.settings.llm'
 import { Route as AppSettingsConnectorsRouteImport } from './routes/app.settings.connectors'
@@ -61,6 +72,11 @@ const ForgotRoute = ForgotRouteImport.update({
   path: '/forgot',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocsRoute = DocsRouteImport.update({
+  id: '/docs',
+  path: '/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
@@ -71,10 +87,50 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocsIndexRoute = DocsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DocsRoute,
+} as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRoute,
+} as any)
+const DocsSelfHostingRoute = DocsSelfHostingRouteImport.update({
+  id: '/self-hosting',
+  path: '/self-hosting',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsSecurityRoute = DocsSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsQuickstartRoute = DocsQuickstartRouteImport.update({
+  id: '/quickstart',
+  path: '/quickstart',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsLlmRoute = DocsLlmRouteImport.update({
+  id: '/llm',
+  path: '/llm',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsHowTosRoute = DocsHowTosRouteImport.update({
+  id: '/how-tos',
+  path: '/how-tos',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsConnectorsRoute = DocsConnectorsRouteImport.update({
+  id: '/connectors',
+  path: '/connectors',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsConceptsRoute = DocsConceptsRouteImport.update({
+  id: '/concepts',
+  path: '/concepts',
+  getParentRoute: () => DocsRoute,
 } as any)
 const AppTimeRoute = AppTimeRouteImport.update({
   id: '/time',
@@ -91,10 +147,20 @@ const AppApprovalsRoute = AppApprovalsRouteImport.update({
   path: '/approvals',
   getParentRoute: () => AppRoute,
 } as any)
+const DocsConnectorsIndexRoute = DocsConnectorsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DocsConnectorsRoute,
+} as any)
 const AppFlowsIndexRoute = AppFlowsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppFlowsRoute,
+} as any)
+const DocsConnectorsIdRoute = DocsConnectorsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => DocsConnectorsRoute,
 } as any)
 const AppSettingsPreferencesRoute = AppSettingsPreferencesRouteImport.update({
   id: '/settings/preferences',
@@ -174,6 +240,7 @@ const AppFlowsIdRunsRunIdRoute = AppFlowsIdRunsRunIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/docs': typeof DocsRouteWithChildren
   '/forgot': typeof ForgotRoute
   '/login': typeof LoginRoute
   '/orgs': typeof OrgsRoute
@@ -182,7 +249,15 @@ export interface FileRoutesByFullPath {
   '/app/approvals': typeof AppApprovalsRoute
   '/app/flows': typeof AppFlowsRouteWithChildren
   '/app/time': typeof AppTimeRoute
+  '/docs/concepts': typeof DocsConceptsRoute
+  '/docs/connectors': typeof DocsConnectorsRouteWithChildren
+  '/docs/how-tos': typeof DocsHowTosRoute
+  '/docs/llm': typeof DocsLlmRoute
+  '/docs/quickstart': typeof DocsQuickstartRoute
+  '/docs/security': typeof DocsSecurityRoute
+  '/docs/self-hosting': typeof DocsSelfHostingRoute
   '/app/': typeof AppIndexRoute
+  '/docs/': typeof DocsIndexRoute
   '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
   '/app/flow_runs/$runId': typeof AppFlow_runsRunIdRoute
@@ -191,7 +266,9 @@ export interface FileRoutesByFullPath {
   '/app/settings/connectors': typeof AppSettingsConnectorsRouteWithChildren
   '/app/settings/llm': typeof AppSettingsLlmRoute
   '/app/settings/preferences': typeof AppSettingsPreferencesRoute
+  '/docs/connectors/$id': typeof DocsConnectorsIdRoute
   '/app/flows/': typeof AppFlowsIndexRoute
+  '/docs/connectors/': typeof DocsConnectorsIndexRoute
   '/app/settings/connectors/external': typeof AppSettingsConnectorsExternalRouteWithChildren
   '/app/flows/$id/': typeof AppFlowsIdIndexRoute
   '/app/settings/connectors/': typeof AppSettingsConnectorsIndexRoute
@@ -208,14 +285,23 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/app/approvals': typeof AppApprovalsRoute
   '/app/time': typeof AppTimeRoute
+  '/docs/concepts': typeof DocsConceptsRoute
+  '/docs/how-tos': typeof DocsHowTosRoute
+  '/docs/llm': typeof DocsLlmRoute
+  '/docs/quickstart': typeof DocsQuickstartRoute
+  '/docs/security': typeof DocsSecurityRoute
+  '/docs/self-hosting': typeof DocsSelfHostingRoute
   '/app': typeof AppIndexRoute
+  '/docs': typeof DocsIndexRoute
   '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
   '/app/flow_runs/$runId': typeof AppFlow_runsRunIdRoute
   '/app/flows/new': typeof AppFlowsNewRoute
   '/app/settings/llm': typeof AppSettingsLlmRoute
   '/app/settings/preferences': typeof AppSettingsPreferencesRoute
+  '/docs/connectors/$id': typeof DocsConnectorsIdRoute
   '/app/flows': typeof AppFlowsIndexRoute
+  '/docs/connectors': typeof DocsConnectorsIndexRoute
   '/app/flows/$id': typeof AppFlowsIdIndexRoute
   '/app/settings/connectors': typeof AppSettingsConnectorsIndexRoute
   '/app/flows/$id/runs/$runId': typeof AppFlowsIdRunsRunIdRoute
@@ -226,6 +312,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/docs': typeof DocsRouteWithChildren
   '/forgot': typeof ForgotRoute
   '/login': typeof LoginRoute
   '/orgs': typeof OrgsRoute
@@ -234,7 +321,15 @@ export interface FileRoutesById {
   '/app/approvals': typeof AppApprovalsRoute
   '/app/flows': typeof AppFlowsRouteWithChildren
   '/app/time': typeof AppTimeRoute
+  '/docs/concepts': typeof DocsConceptsRoute
+  '/docs/connectors': typeof DocsConnectorsRouteWithChildren
+  '/docs/how-tos': typeof DocsHowTosRoute
+  '/docs/llm': typeof DocsLlmRoute
+  '/docs/quickstart': typeof DocsQuickstartRoute
+  '/docs/security': typeof DocsSecurityRoute
+  '/docs/self-hosting': typeof DocsSelfHostingRoute
   '/app/': typeof AppIndexRoute
+  '/docs/': typeof DocsIndexRoute
   '/app/dashboards/$slug': typeof AppDashboardsSlugRoute
   '/app/entities/$name': typeof AppEntitiesNameRoute
   '/app/flow_runs/$runId': typeof AppFlow_runsRunIdRoute
@@ -243,7 +338,9 @@ export interface FileRoutesById {
   '/app/settings/connectors': typeof AppSettingsConnectorsRouteWithChildren
   '/app/settings/llm': typeof AppSettingsLlmRoute
   '/app/settings/preferences': typeof AppSettingsPreferencesRoute
+  '/docs/connectors/$id': typeof DocsConnectorsIdRoute
   '/app/flows/': typeof AppFlowsIndexRoute
+  '/docs/connectors/': typeof DocsConnectorsIndexRoute
   '/app/settings/connectors/external': typeof AppSettingsConnectorsExternalRouteWithChildren
   '/app/flows/$id/': typeof AppFlowsIdIndexRoute
   '/app/settings/connectors/': typeof AppSettingsConnectorsIndexRoute
@@ -256,6 +353,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/docs'
     | '/forgot'
     | '/login'
     | '/orgs'
@@ -264,7 +362,15 @@ export interface FileRouteTypes {
     | '/app/approvals'
     | '/app/flows'
     | '/app/time'
+    | '/docs/concepts'
+    | '/docs/connectors'
+    | '/docs/how-tos'
+    | '/docs/llm'
+    | '/docs/quickstart'
+    | '/docs/security'
+    | '/docs/self-hosting'
     | '/app/'
+    | '/docs/'
     | '/app/dashboards/$slug'
     | '/app/entities/$name'
     | '/app/flow_runs/$runId'
@@ -273,7 +379,9 @@ export interface FileRouteTypes {
     | '/app/settings/connectors'
     | '/app/settings/llm'
     | '/app/settings/preferences'
+    | '/docs/connectors/$id'
     | '/app/flows/'
+    | '/docs/connectors/'
     | '/app/settings/connectors/external'
     | '/app/flows/$id/'
     | '/app/settings/connectors/'
@@ -290,14 +398,23 @@ export interface FileRouteTypes {
     | '/signup'
     | '/app/approvals'
     | '/app/time'
+    | '/docs/concepts'
+    | '/docs/how-tos'
+    | '/docs/llm'
+    | '/docs/quickstart'
+    | '/docs/security'
+    | '/docs/self-hosting'
     | '/app'
+    | '/docs'
     | '/app/dashboards/$slug'
     | '/app/entities/$name'
     | '/app/flow_runs/$runId'
     | '/app/flows/new'
     | '/app/settings/llm'
     | '/app/settings/preferences'
+    | '/docs/connectors/$id'
     | '/app/flows'
+    | '/docs/connectors'
     | '/app/flows/$id'
     | '/app/settings/connectors'
     | '/app/flows/$id/runs/$runId'
@@ -307,6 +424,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/app'
+    | '/docs'
     | '/forgot'
     | '/login'
     | '/orgs'
@@ -315,7 +433,15 @@ export interface FileRouteTypes {
     | '/app/approvals'
     | '/app/flows'
     | '/app/time'
+    | '/docs/concepts'
+    | '/docs/connectors'
+    | '/docs/how-tos'
+    | '/docs/llm'
+    | '/docs/quickstart'
+    | '/docs/security'
+    | '/docs/self-hosting'
     | '/app/'
+    | '/docs/'
     | '/app/dashboards/$slug'
     | '/app/entities/$name'
     | '/app/flow_runs/$runId'
@@ -324,7 +450,9 @@ export interface FileRouteTypes {
     | '/app/settings/connectors'
     | '/app/settings/llm'
     | '/app/settings/preferences'
+    | '/docs/connectors/$id'
     | '/app/flows/'
+    | '/docs/connectors/'
     | '/app/settings/connectors/external'
     | '/app/flows/$id/'
     | '/app/settings/connectors/'
@@ -336,6 +464,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  DocsRoute: typeof DocsRouteWithChildren
   ForgotRoute: typeof ForgotRoute
   LoginRoute: typeof LoginRoute
   OrgsRoute: typeof OrgsRoute
@@ -380,6 +509,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ForgotRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/docs': {
+      id: '/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof DocsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app': {
       id: '/app'
       path: '/app'
@@ -394,12 +530,68 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/docs/': {
+      id: '/docs/'
+      path: '/'
+      fullPath: '/docs/'
+      preLoaderRoute: typeof DocsIndexRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/app/': {
       id: '/app/'
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/docs/self-hosting': {
+      id: '/docs/self-hosting'
+      path: '/self-hosting'
+      fullPath: '/docs/self-hosting'
+      preLoaderRoute: typeof DocsSelfHostingRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/security': {
+      id: '/docs/security'
+      path: '/security'
+      fullPath: '/docs/security'
+      preLoaderRoute: typeof DocsSecurityRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/quickstart': {
+      id: '/docs/quickstart'
+      path: '/quickstart'
+      fullPath: '/docs/quickstart'
+      preLoaderRoute: typeof DocsQuickstartRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/llm': {
+      id: '/docs/llm'
+      path: '/llm'
+      fullPath: '/docs/llm'
+      preLoaderRoute: typeof DocsLlmRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/how-tos': {
+      id: '/docs/how-tos'
+      path: '/how-tos'
+      fullPath: '/docs/how-tos'
+      preLoaderRoute: typeof DocsHowTosRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/connectors': {
+      id: '/docs/connectors'
+      path: '/connectors'
+      fullPath: '/docs/connectors'
+      preLoaderRoute: typeof DocsConnectorsRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/concepts': {
+      id: '/docs/concepts'
+      path: '/concepts'
+      fullPath: '/docs/concepts'
+      preLoaderRoute: typeof DocsConceptsRouteImport
+      parentRoute: typeof DocsRoute
     }
     '/app/time': {
       id: '/app/time'
@@ -422,12 +614,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppApprovalsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/docs/connectors/': {
+      id: '/docs/connectors/'
+      path: '/'
+      fullPath: '/docs/connectors/'
+      preLoaderRoute: typeof DocsConnectorsIndexRouteImport
+      parentRoute: typeof DocsConnectorsRoute
+    }
     '/app/flows/': {
       id: '/app/flows/'
       path: '/'
       fullPath: '/app/flows/'
       preLoaderRoute: typeof AppFlowsIndexRouteImport
       parentRoute: typeof AppFlowsRoute
+    }
+    '/docs/connectors/$id': {
+      id: '/docs/connectors/$id'
+      path: '/$id'
+      fullPath: '/docs/connectors/$id'
+      preLoaderRoute: typeof DocsConnectorsIdRouteImport
+      parentRoute: typeof DocsConnectorsRoute
     }
     '/app/settings/preferences': {
       id: '/app/settings/preferences'
@@ -621,9 +827,48 @@ const AppRouteChildren: AppRouteChildren = {
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
+interface DocsConnectorsRouteChildren {
+  DocsConnectorsIdRoute: typeof DocsConnectorsIdRoute
+  DocsConnectorsIndexRoute: typeof DocsConnectorsIndexRoute
+}
+
+const DocsConnectorsRouteChildren: DocsConnectorsRouteChildren = {
+  DocsConnectorsIdRoute: DocsConnectorsIdRoute,
+  DocsConnectorsIndexRoute: DocsConnectorsIndexRoute,
+}
+
+const DocsConnectorsRouteWithChildren = DocsConnectorsRoute._addFileChildren(
+  DocsConnectorsRouteChildren,
+)
+
+interface DocsRouteChildren {
+  DocsConceptsRoute: typeof DocsConceptsRoute
+  DocsConnectorsRoute: typeof DocsConnectorsRouteWithChildren
+  DocsHowTosRoute: typeof DocsHowTosRoute
+  DocsLlmRoute: typeof DocsLlmRoute
+  DocsQuickstartRoute: typeof DocsQuickstartRoute
+  DocsSecurityRoute: typeof DocsSecurityRoute
+  DocsSelfHostingRoute: typeof DocsSelfHostingRoute
+  DocsIndexRoute: typeof DocsIndexRoute
+}
+
+const DocsRouteChildren: DocsRouteChildren = {
+  DocsConceptsRoute: DocsConceptsRoute,
+  DocsConnectorsRoute: DocsConnectorsRouteWithChildren,
+  DocsHowTosRoute: DocsHowTosRoute,
+  DocsLlmRoute: DocsLlmRoute,
+  DocsQuickstartRoute: DocsQuickstartRoute,
+  DocsSecurityRoute: DocsSecurityRoute,
+  DocsSelfHostingRoute: DocsSelfHostingRoute,
+  DocsIndexRoute: DocsIndexRoute,
+}
+
+const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  DocsRoute: DocsRouteWithChildren,
   ForgotRoute: ForgotRoute,
   LoginRoute: LoginRoute,
   OrgsRoute: OrgsRoute,

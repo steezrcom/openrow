@@ -52,6 +52,7 @@ function TopNav() {
           <a href="#features" className="hover:text-foreground">Features</a>
           <a href="#agency" className="hover:text-foreground">For agencies</a>
           <a href="#connectors" className="hover:text-foreground">Connectors</a>
+          <Link to="/docs" className="hover:text-foreground">Docs</Link>
           <a href="#self-host" className="hover:text-foreground">Self-host</a>
           <a
             href="https://github.com/steezrcom/openrow"
@@ -615,6 +616,7 @@ function Footer() {
             <span>AGPL-3.0</span>
           </div>
           <div className="flex flex-wrap items-center gap-5">
+            <Link to="/docs" className="hover:text-foreground">Docs</Link>
             <a href="https://github.com/steezrcom/openrow" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground">
               <Github className="h-3.5 w-3.5" />
               GitHub
