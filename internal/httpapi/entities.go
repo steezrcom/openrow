@@ -15,7 +15,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	m, _ := auth.MembershipFromContext(r.Context())
 	es, err := s.entities.List(r.Context(), m.TenantID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"entities": entitiesDTO(es)})
@@ -38,7 +38,7 @@ func (s *Server) proposeEntity(w http.ResponseWriter, r *http.Request) {
 	}
 	existing, err := s.entities.List(r.Context(), m.TenantID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	spec, err := s.proposer.Propose(r.Context(), m.TenantID, req.Description, existing)
@@ -48,7 +48,7 @@ func (s *Server) proposeEntity(w http.ResponseWriter, r *http.Request) {
 	}
 	ent, err := s.entities.Create(r.Context(), m.TenantID, m.PGSchema, spec)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"entity": entityDTO(ent)})
@@ -61,9 +61,13 @@ func (s *Server) createEntityFromSpec(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
+	if err := spec.Validate(); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	ent, err := s.entities.Create(r.Context(), m.TenantID, m.PGSchema, &spec)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"entity": entityDTO(ent)})
@@ -99,19 +103,19 @@ func (s *Server) listRows(w http.ResponseWriter, r *http.Request) {
 		SortDir: q.Get("dir"),
 	})
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 
 	total, err := s.entities.CountRows(r.Context(), m.PGSchema, ent)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 
 	refOpts, err := s.loadRefOptions(r, ent, m.PGSchema, m.TenantID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 
@@ -176,7 +180,7 @@ func (s *Server) createRow(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.entities.InsertRow(r.Context(), m.PGSchema, ent, req.Values)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
@@ -195,7 +199,7 @@ func (s *Server) addField(w http.ResponseWriter, r *http.Request) {
 	}
 	ent, err := s.entities.AddField(r.Context(), m.TenantID, m.PGSchema, r.PathValue("name"), f)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"entity": entityDTO(ent)})
@@ -234,7 +238,7 @@ func (s *Server) listFieldOptions(w http.ResponseWriter, r *http.Request) {
 	}
 	opts, err := s.entities.ListRefOptions(r.Context(), m.PGSchema, target)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"options": opts})
@@ -245,7 +249,7 @@ func (s *Server) dropField(w http.ResponseWriter, r *http.Request) {
 	err := s.entities.DropField(r.Context(), m.TenantID, m.PGSchema,
 		r.PathValue("name"), r.PathValue("field"))
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -268,7 +272,7 @@ func (s *Server) updateRow(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "row not found")
 			return
 		}
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -286,7 +290,7 @@ func (s *Server) deleteRow(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "row not found")
 			return
 		}
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

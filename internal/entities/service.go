@@ -214,6 +214,19 @@ func (s *Service) AddField(ctx context.Context, tenantID, schema string, entityN
 		return nil, err
 	}
 
+	if f.IsRequired {
+		var hasRows bool
+		if err := s.pool.QueryRow(ctx,
+			fmt.Sprintf("SELECT EXISTS (SELECT 1 FROM %s LIMIT 1)",
+				pgx.Identifier{schema, ent.Name}.Sanitize()),
+		).Scan(&hasRows); err != nil {
+			return nil, fmt.Errorf("check row count: %w", err)
+		}
+		if hasRows {
+			return nil, fmt.Errorf("cannot add NOT NULL column to a table that already has rows; backfill required")
+		}
+	}
+
 	ddl, err := AddColumnSQL(schema, ent.Name, f)
 	if err != nil {
 		return nil, err

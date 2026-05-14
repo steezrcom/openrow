@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -12,6 +14,11 @@ import (
 
 	"github.com/openrow/openrow/internal/entities"
 )
+
+// likeEscaper neutralises ILIKE meta-characters in user input so a
+// "contains" filter matches the literal string only. Used together with
+// `ESCAPE '\'` in the SQL.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
 // Result is the normalized output of a QuerySpec.
 //
@@ -210,7 +217,12 @@ func (b *builder) buildWhere(filters []Filter) (string, error) {
 			if dt != entities.TypeText {
 				return "", fmt.Errorf("filters[%d]: contains only works on text fields", i)
 			}
-			parts = append(parts, fmt.Sprintf("%s ILIKE '%%' || %s || '%%'", col, b.nextParam(v)))
+			s, ok := v.(string)
+			if !ok {
+				return "", fmt.Errorf("filters[%d]: contains expects a string value", i)
+			}
+			esc := likeEscaper.Replace(s)
+			parts = append(parts, fmt.Sprintf("%s ILIKE '%%' || %s || '%%' ESCAPE '\\'", col, b.nextParam(esc)))
 			continue
 		}
 		op, err := sqlOp(f.Op)
@@ -447,12 +459,72 @@ func sqlOp(op FilterOp) (string, error) {
 }
 
 func coerceScalar(dt entities.DataType, raw json.RawMessage) (interface{}, error) {
-	var out interface{}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, err
+	switch dt {
+	case entities.TypeInteger, entities.TypeBigInt:
+		var n json.Number
+		dec := json.NewDecoder(strings.NewReader(string(raw)))
+		dec.UseNumber()
+		if err := dec.Decode(&n); err != nil {
+			return nil, fmt.Errorf("expected number, got %s", string(raw))
+		}
+		i, err := n.Int64()
+		if err != nil {
+			return nil, fmt.Errorf("invalid integer %q", string(raw))
+		}
+		return i, nil
+	case entities.TypeNumeric:
+		// Scalar comparison path: cast to float64 for pgx parameter binding.
+		// Row storage uses decimal strings for full precision; aggregates and
+		// filters at scalar level accept the rounded value.
+		var f float64
+		if err := json.Unmarshal(raw, &f); err != nil {
+			return nil, fmt.Errorf("expected number, got %s", string(raw))
+		}
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return nil, fmt.Errorf("number must be finite")
+		}
+		return f, nil
+	case entities.TypeBoolean:
+		var b bool
+		if err := json.Unmarshal(raw, &b); err != nil {
+			return nil, fmt.Errorf("expected boolean, got %s", string(raw))
+		}
+		return b, nil
+	case entities.TypeDate, entities.TypeTimestampTZ:
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return nil, fmt.Errorf("expected ISO-8601 date string, got %s", string(raw))
+		}
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			return t, nil
+		}
+		if t, err := time.Parse("2006-01-02", s); err == nil {
+			return t, nil
+		}
+		return nil, fmt.Errorf("invalid date %q", s)
+	case entities.TypeUUID, entities.TypeReference:
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return nil, fmt.Errorf("expected uuid string, got %s", string(raw))
+		}
+		if _, err := uuid.Parse(s); err != nil {
+			return nil, fmt.Errorf("invalid uuid %q", s)
+		}
+		return s, nil
+	case entities.TypeText:
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return nil, fmt.Errorf("expected string, got %s", string(raw))
+		}
+		return s, nil
+	case entities.TypeJSONB:
+		var out interface{}
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return nil, err
+		}
+		return out, nil
 	}
-	_ = dt
-	return out, nil
+	return nil, fmt.Errorf("unsupported field type %q", dt)
 }
 
 func aggregateExpr(fields map[string]entities.Field, a *Aggregate) (string, error) {
@@ -509,7 +581,7 @@ func (b *builder) groupByExpr(ctx context.Context, g *GroupBy) (labelExpr, group
 // pickRefLabel chooses the best text field to display for a reference.
 // Mirrors entities.pickLabelField but lives here to avoid exporting internals.
 func pickRefLabel(ent *entities.Entity) string {
-	priorities := []string{"name", "title", "label", "display_name", "email"}
+	priorities := []string{"name", "title", "label", "display_name"}
 	text := map[string]bool{}
 	for _, f := range ent.Fields {
 		if f.DataType == entities.TypeText {

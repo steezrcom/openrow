@@ -13,7 +13,7 @@ func (s *Server) listViews(w http.ResponseWriter, r *http.Request) {
 	m, _ := auth.MembershipFromContext(r.Context())
 	views, err := s.entities.ListViews(r.Context(), m.TenantID, r.PathValue("name"))
 	if err != nil {
-		writeErr(w, http.StatusNotFound, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"views": views})
@@ -45,7 +45,7 @@ func (s *Server) createView(w http.ResponseWriter, r *http.Request) {
 		UserID:     userID,
 	})
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"view": v})
@@ -76,7 +76,7 @@ func (s *Server) patchView(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
 		}
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"view": v})
@@ -89,7 +89,7 @@ func (s *Server) deleteView(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
 		}
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -89,15 +90,20 @@ type CreateReportInput struct {
 
 // Create inserts the dashboard + reports in one transaction.
 // Returns the full dashboard with reports hydrated.
+//
+// If the desired slug is taken by another dashboard in the same tenant, the
+// next candidate (`<slug>_2`, `<slug>_3`, ...) is tried up to 10 times before
+// giving up. The retry only fires on unique-violations; any other error short
+// circuits.
 func (s *Service) Create(ctx context.Context, tenantID string, in CreateDashboardInput) (*Dashboard, error) {
 	if strings.TrimSpace(in.Name) == "" {
 		return nil, errors.New("name is required")
 	}
-	slug := in.Slug
-	if slug == "" {
-		slug = slugify(in.Name)
+	base := in.Slug
+	if base == "" {
+		base = slugify(in.Name)
 	} else {
-		slug = slugify(slug)
+		base = slugify(base)
 	}
 
 	for i, r := range in.Reports {
@@ -106,21 +112,45 @@ func (s *Service) Create(ctx context.Context, tenantID string, in CreateDashboar
 		}
 	}
 
+	const maxAttempts = 10
+	var finalSlug string
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		slug := base
+		if attempt > 0 {
+			slug = fmt.Sprintf("%s_%d", base, attempt+1)
+		}
+		err := s.insertDashboardTx(ctx, tenantID, slug, in)
+		if err == nil {
+			finalSlug = slug
+			break
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			continue
+		}
+		return nil, err
+	}
+	if finalSlug == "" {
+		return nil, fmt.Errorf("could not find unique slug for %q after %d attempts", base, maxAttempts)
+	}
+	return s.Get(ctx, tenantID, finalSlug)
+}
+
+func (s *Service) insertDashboardTx(ctx context.Context, tenantID, slug string, in CreateDashboardInput) error {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer tx.Rollback(ctx)
 
 	var id string
-	err = tx.QueryRow(ctx, `
+	if err := tx.QueryRow(ctx, `
 		INSERT INTO openrow.dashboards (tenant_id, name, slug, description, default_date_range)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id`,
 		tenantID, in.Name, slug, nullIfEmpty(in.Description), nullIfEmpty(in.DefaultDateRange),
-	).Scan(&id)
-	if err != nil {
-		return nil, fmt.Errorf("insert dashboard: %w", err)
+	).Scan(&id); err != nil {
+		return err
 	}
 	for i, r := range in.Reports {
 		width := r.Width
@@ -134,13 +164,10 @@ func (s *Service) Create(ctx context.Context, tenantID string, in CreateDashboar
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 			id, r.Title, nullIfEmpty(r.Subtitle), string(r.WidgetType), spec, opts, width, i,
 		); err != nil {
-			return nil, fmt.Errorf("insert report %d: %w", i, err)
+			return fmt.Errorf("insert report %d: %w", i, err)
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return s.Get(ctx, tenantID, slug)
+	return tx.Commit(ctx)
 }
 
 func validateReportInput(r CreateReportInput) error {

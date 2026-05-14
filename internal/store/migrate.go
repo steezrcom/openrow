@@ -14,8 +14,25 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// migrationLockID is a process-wide Postgres advisory lock key derived from the
+// ASCII bytes of "openrow". Acquired before applying migrations so two
+// instances starting in parallel can't race on DDL.
+const migrationLockID int64 = 0x6f70656e726f77
+
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, `
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration conn: %w", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", migrationLockID); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	defer func() {
+		_, _ = conn.Exec(ctx, "SELECT pg_advisory_unlock($1)", migrationLockID)
+	}()
+
+	if _, err := conn.Exec(ctx, `
 		CREATE SCHEMA IF NOT EXISTS openrow;
 		CREATE TABLE IF NOT EXISTS openrow.schema_migrations (
 			version TEXT PRIMARY KEY,
@@ -39,7 +56,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	for _, name := range names {
 		version := strings.TrimSuffix(name, ".sql")
 		var exists bool
-		if err := pool.QueryRow(ctx,
+		if err := conn.QueryRow(ctx,
 			`SELECT EXISTS (SELECT 1 FROM openrow.schema_migrations WHERE version = $1)`, version).
 			Scan(&exists); err != nil {
 			return fmt.Errorf("check migration %s: %w", version, err)
@@ -51,7 +68,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		if err != nil {
 			return fmt.Errorf("read %s: %w", name, err)
 		}
-		tx, err := pool.Begin(ctx)
+		tx, err := conn.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("begin tx for %s: %w", name, err)
 		}

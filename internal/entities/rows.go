@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,25 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
+
+// numericRe accepts an optional sign, integer part, optional fractional part,
+// and optional decimal exponent. Decimal separator is "." — not comma.
+var numericRe = regexp.MustCompile(`^-?\d+(\.\d+)?([eE][-+]?\d+)?$`)
+
+const maxTextBytes = 1 << 20 // 1 MiB
+
+// maxRowInputBytes caps the serialized size of one row mutation. Defense in
+// depth: the HTTP layer also enforces a body limit, but a buggy or malicious
+// internal caller could bypass it.
+const maxRowInputBytes = 5 * (1 << 20)
+
+func totalInputSize(input map[string]string) int {
+	n := 0
+	for k, v := range input {
+		n += len(k) + len(v)
+	}
+	return n
+}
 
 // Row is a single record from an entity's underlying table, keyed by field name.
 // Always contains "id", "created_at", "updated_at".
@@ -74,6 +94,9 @@ func (s *Service) ListRows(ctx context.Context, schema string, ent *Entity, opts
 func (s *Service) InsertRow(ctx context.Context, schema string, ent *Entity, input map[string]string) (string, error) {
 	if !identRe.MatchString(schema) {
 		return "", fmt.Errorf("invalid schema")
+	}
+	if totalInputSize(input) > maxRowInputBytes {
+		return "", fmt.Errorf("row payload too large (max 5 MiB)")
 	}
 
 	var (
@@ -202,6 +225,9 @@ func (s *Service) UpdateRow(ctx context.Context, schema string, ent *Entity, id 
 	if !identRe.MatchString(schema) {
 		return fmt.Errorf("invalid schema")
 	}
+	if totalInputSize(input) > maxRowInputBytes {
+		return fmt.Errorf("row payload too large (max 5 MiB)")
+	}
 
 	var (
 		sets   []string
@@ -310,7 +336,7 @@ func (s *Service) ListRefOptions(ctx context.Context, schema string, target *Ent
 }
 
 func pickLabelField(ent *Entity) string {
-	priorities := []string{"name", "title", "label", "display_name", "email"}
+	priorities := []string{"name", "title", "label", "display_name"}
 	fieldNames := make(map[string]bool, len(ent.Fields))
 	for _, f := range ent.Fields {
 		if f.DataType == TypeText {
@@ -347,7 +373,12 @@ func normalizeValue(v any) any {
 
 func coerceValue(t DataType, raw string) (any, error) {
 	switch t {
-	case TypeText, TypeUUID, TypeDate:
+	case TypeText:
+		if len(raw) > maxTextBytes {
+			return nil, fmt.Errorf("text too long (max 1 MiB)")
+		}
+		return raw, nil
+	case TypeUUID, TypeDate:
 		return raw, nil
 	case TypeInteger, TypeBigInt:
 		n, err := strconv.ParseInt(raw, 10, 64)
@@ -356,8 +387,15 @@ func coerceValue(t DataType, raw string) (any, error) {
 		}
 		return n, nil
 	case TypeNumeric:
-		// Pass through as string; pgx + Postgres handle the numeric cast. Validate format.
-		if _, err := strconv.ParseFloat(raw, 64); err != nil {
+		// Pass through as string; pgx + Postgres handle the numeric cast.
+		// Reject NaN/Inf and validate the textual format. Decimal separator
+		// must be "." — comma is not accepted.
+		lower := strings.ToLower(raw)
+		if lower == "nan" || lower == "inf" || lower == "+inf" || lower == "-inf" ||
+			lower == "infinity" || lower == "+infinity" || lower == "-infinity" {
+			return nil, fmt.Errorf("number must be finite")
+		}
+		if !numericRe.MatchString(raw) {
 			return nil, fmt.Errorf("invalid number %q", raw)
 		}
 		return raw, nil

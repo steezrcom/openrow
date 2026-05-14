@@ -70,7 +70,11 @@ func AddColumnSQL(schema, table string, f FieldSpec) (string, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "ALTER TABLE %s ADD COLUMN %s %s",
 		qualified(schema, table), quoted(f.Name), sqlType)
-	// Adding NOT NULL on an existing table with rows would fail; skip for now.
+	// NOT NULL on ALTER TABLE ADD COLUMN is safe only if the table is empty.
+	// The caller (Service.AddField) checks row count before invoking us.
+	if f.IsRequired {
+		b.WriteString(" NOT NULL")
+	}
 	if f.IsUnique {
 		b.WriteString(" UNIQUE")
 	}

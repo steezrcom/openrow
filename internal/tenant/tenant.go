@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,9 +28,33 @@ func NewService(pool *pgxpool.Pool) *Service {
 
 var slugRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,30}$`)
 
-func (s *Service) Create(ctx context.Context, slug, name string) (*Tenant, error) {
+var reservedSlugs = map[string]struct{}{
+	"public": {}, "openrow": {}, "information_schema": {}, "pg_catalog": {},
+	"pg_temp": {}, "pg_toast": {},
+	"admin": {}, "api": {}, "app": {}, "auth": {}, "billing": {}, "system": {},
+	"support": {}, "www": {}, "root": {}, "static": {}, "assets": {},
+	"webhooks": {}, "docs": {}, "help": {},
+}
+
+// ValidateSlug enforces the format + reserved-name rules for a tenant slug.
+// Callers that accept slugs (CLI seeders, admin tools) should use this rather
+// than re-implementing the check.
+func ValidateSlug(slug string) error {
 	if !slugRe.MatchString(slug) {
-		return nil, fmt.Errorf("slug %q must match [a-z][a-z0-9_]{0,30}", slug)
+		return fmt.Errorf("slug %q must match [a-z][a-z0-9_]{0,30}", slug)
+	}
+	if _, bad := reservedSlugs[slug]; bad {
+		return fmt.Errorf("slug %q is reserved", slug)
+	}
+	if strings.HasPrefix(slug, "pg_") {
+		return fmt.Errorf("slug %q is reserved (pg_ prefix)", slug)
+	}
+	return nil
+}
+
+func (s *Service) Create(ctx context.Context, slug, name string) (*Tenant, error) {
+	if err := ValidateSlug(slug); err != nil {
+		return nil, err
 	}
 	pgSchema := "tenant_" + slug
 

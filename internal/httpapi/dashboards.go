@@ -15,7 +15,7 @@ func (s *Server) listDashboards(w http.ResponseWriter, r *http.Request) {
 	m, _ := auth.MembershipFromContext(r.Context())
 	ds, err := s.dashboards.List(r.Context(), m.TenantID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"dashboards": ds})
@@ -30,7 +30,7 @@ func (s *Server) createDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	d, err := s.dashboards.Create(r.Context(), m.TenantID, in)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"dashboard": d})
@@ -44,7 +44,7 @@ func (s *Server) getDashboard(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "dashboard not found")
 			return
 		}
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"dashboard": d})
@@ -69,7 +69,7 @@ func (s *Server) patchDashboard(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "dashboard not found")
 			return
 		}
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"dashboard": d})
@@ -82,7 +82,7 @@ func (s *Server) deleteDashboard(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "dashboard not found")
 			return
 		}
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -100,7 +100,7 @@ func (s *Server) reorderReports(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.dashboards.ReorderReports(r.Context(), m.TenantID, r.PathValue("slug"), in.ReportIDs); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -115,7 +115,7 @@ func (s *Server) addReport(w http.ResponseWriter, r *http.Request) {
 	}
 	report, err := s.dashboards.AddReport(r.Context(), m.TenantID, r.PathValue("slug"), in)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"report": report})
@@ -146,7 +146,7 @@ func (s *Server) patchReport(w http.ResponseWriter, r *http.Request) {
 		Width:      in.Width,
 	})
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -155,7 +155,7 @@ func (s *Server) patchReport(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deleteReport(w http.ResponseWriter, r *http.Request) {
 	m, _ := auth.MembershipFromContext(r.Context())
 	if err := s.dashboards.DeleteReport(r.Context(), m.TenantID, r.PathValue("id")); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -185,7 +185,7 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 	to := parseTimeQ(req.To)
 	result, err := s.runWithRange(r, ent, &req.Spec, from, to)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"result": result})
@@ -214,7 +214,7 @@ func (s *Server) executeReport(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.runWithRange(r, ent, &report.QuerySpec, from, to)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeSQLErr(w, s.log, err)
 		return
 	}
 
