@@ -3,6 +3,8 @@ package httpapi
 import (
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/openrow/openrow/internal/ai"
 	"github.com/openrow/openrow/internal/auth"
@@ -37,6 +39,8 @@ type Server struct {
 	chatLimiter      *ratelimit.Keyed
 	mail             mailer.Mailer
 	appURL           string
+	appOrigin        string
+	appHost          string
 	secureCookies    bool
 	spaDir           string
 	externalBindings *ExternalBindings
@@ -75,6 +79,11 @@ func New(d Deps) *Server {
 	if appURL == "" {
 		appURL = "http://localhost:5173"
 	}
+	var appOrigin, appHost string
+	if u, err := url.Parse(appURL); err == nil && u.Scheme != "" && u.Host != "" {
+		appOrigin = u.Scheme + "://" + u.Host
+		appHost = u.Host
+	}
 	// Chat rate limit: avg 1 message every 2s per user, burst of 5.
 	// Plenty for real usage; blocks only pathological loops / abuse.
 	chatLim := ratelimit.New(0.5, 5)
@@ -98,6 +107,8 @@ func New(d Deps) *Server {
 		chatLimiter:      chatLim,
 		mail:             d.Mailer,
 		appURL:           appURL,
+		appOrigin:        appOrigin,
+		appHost:          appHost,
 		secureCookies:    d.SecureCookies,
 		spaDir:           d.SPADir,
 		externalBindings: d.ExternalBindings,
@@ -188,7 +199,7 @@ func (s *Server) Handler() http.Handler {
 		s.externalBindings.Mount(authed)
 	}
 
-	mux.Handle("/api/v1/", auth.RequireAuth(authed))
+	mux.Handle("/api/v1/", requireJSON(limitBody(auth.RequireAuth(authed))))
 
 	if s.spaDir != "" {
 		mux.Handle("/", spa.Handler(s.spaDir))
@@ -200,5 +211,103 @@ func (s *Server) Handler() http.Handler {
 		Memberships: s.memberships,
 	}).Attach
 
-	return attach(mux)
+	return s.secureHeaders(s.sameOriginCheck(attach(mux)))
+}
+
+func (s *Server) secureHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		if s.secureCookies {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) sameOriginCheck(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			next.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/webhooks/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin != "" {
+			if origin != s.appOrigin {
+				writeErr(w, http.StatusForbidden, "forbidden origin")
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		referer := strings.TrimSpace(r.Header.Get("Referer"))
+		if referer == "" {
+			writeErr(w, http.StatusForbidden, "missing origin")
+			return
+		}
+		ref, err := url.Parse(referer)
+		if err != nil || ref.Host == "" {
+			writeErr(w, http.StatusForbidden, "forbidden origin")
+			return
+		}
+		refOrigin := ref.Scheme + "://" + ref.Host
+		if refOrigin != s.appOrigin && ref.Host != s.appHost {
+			writeErr(w, http.StatusForbidden, "forbidden origin")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func requireJSON(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch:
+			ct := r.Header.Get("Content-Type")
+			if i := strings.Index(ct, ";"); i >= 0 {
+				ct = ct[:i]
+			}
+			ct = strings.TrimSpace(strings.ToLower(ct))
+			if !strings.HasPrefix(ct, "application/json") {
+				writeErr(w, http.StatusUnsupportedMediaType, "unsupported media type")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func limitBody(next http.Handler) http.Handler {
+	const (
+		defaultMax = int64(1 << 20)       // 1 MiB
+		chatMax    = int64(8 * (1 << 20)) // 8 MiB
+		rowsMax    = int64(4 * (1 << 20)) // 4 MiB
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		limit := defaultMax
+		p := r.URL.Path
+		switch {
+		case p == "/api/v1/chat/messages/stream":
+			limit = chatMax
+		case strings.HasPrefix(p, "/api/v1/entities/") && strings.HasSuffix(p, "/rows"):
+			limit = rowsMax
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
+		next.ServeHTTP(w, r)
+	})
 }

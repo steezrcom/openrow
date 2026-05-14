@@ -120,7 +120,7 @@ func run(log *slog.Logger) error {
 		Mailer:           &mailer.Stdout{Log: log},
 		ExternalBindings: externalBindings,
 		AppURL:           getOr("APP_URL", "http://localhost:5173"),
-		SecureCookies:    strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true"),
+		SecureCookies:    !strings.EqualFold(strings.TrimSpace(os.Getenv("INSECURE_COOKIES_FOR_DEV")), "true"),
 		SPADir:           os.Getenv("SPA_DIR"),
 	})
 

@@ -49,6 +49,7 @@ func Handler(dir string) http.Handler {
 		}
 		target := filepath.Join(abs, clean)
 		if info, err := os.Stat(target); err == nil && !info.IsDir() {
+			applyAssetHeaders(w, r.URL.Path)
 			fileServer.ServeHTTP(w, r)
 			return
 		}
@@ -70,6 +71,32 @@ func serveIndex(w http.ResponseWriter, path string) {
 	}
 	defer f.Close()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
 	_, _ = io.Copy(w, f)
+}
+
+var topLevelStatic = map[string]bool{
+	"/favicon.ico":         true,
+	"/favicon.svg":         true,
+	"/apple-touch-icon.png": true,
+	"/icon-192.png":        true,
+	"/icon-512.png":        true,
+	"/icon.svg":            true,
+	"/og-image.png":        true,
+	"/og-image.svg":        true,
+	"/robots.txt":          true,
+	"/sitemap.xml":         true,
+	"/site.webmanifest":    true,
+}
+
+func applyAssetHeaders(w http.ResponseWriter, urlPath string) {
+	switch {
+	case strings.HasPrefix(urlPath, "/assets/"):
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	case topLevelStatic[urlPath]:
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		if urlPath == "/site.webmanifest" {
+			w.Header().Set("Content-Type", "application/manifest+json")
+		}
+	}
 }
