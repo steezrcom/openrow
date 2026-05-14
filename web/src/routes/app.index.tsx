@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowUpRight,
   BarChart3,
+  Bot,
   Hourglass,
   Package,
   Receipt,
@@ -50,6 +51,8 @@ function Dashboard() {
         </h1>
       </header>
 
+      <LLMSetupBanner />
+
       {isEmpty && <EmptyWorkspace />}
       {!isEmpty && <TodayPanel />}
 
@@ -71,6 +74,45 @@ function Dashboard() {
         pro rychlé hledání.
       </p>
     </div>
+  )
+}
+
+// --- LLM setup nudge ------------------------------------------------------
+
+// LLMSetupBanner appears on the home page when this tenant has no LLM
+// configured and no server-side env fallback is in play. It's the only
+// onboarding step that blocks the assistant + flow runs from working, so
+// surfacing it here saves a support ticket. Hidden as soon as the tenant
+// configures a provider OR the server env fallback covers them.
+function LLMSetupBanner() {
+  const cfg = useQuery({
+    queryKey: ['llm-config'],
+    queryFn: api.llmConfig,
+    // Stale for an hour — config changes are rare and a refresh after
+    // setting a key happens via query invalidation in the settings page.
+    staleTime: 60 * 60 * 1000,
+  })
+  if (cfg.isLoading) return null
+  const data = cfg.data
+  const ready = data?.has_api_key && data?.source === 'tenant'
+  const fallbackInPlay = data?.source === 'env-fallback'
+  if (ready || fallbackInPlay) return null
+  return (
+    <Card className="mb-6 flex items-start gap-3 border-primary/40 bg-primary/5 p-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+        <Bot className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">Nastav LLM, ať může asistent začít pracovat</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Přidej API klíč svého poskytovatele (Anthropic, OpenAI, Groq, Gemini, lokální Ollama, …). Bez něj
+          neběží chat ani automatizační toky. Klíč se ukládá zašifrovaně a používá se jen pro tuto firmu.
+        </p>
+      </div>
+      <Link to="/app/settings/llm" className="shrink-0">
+        <Button>Otevřít nastavení</Button>
+      </Link>
+    </Card>
   )
 }
 
