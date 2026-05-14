@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -162,13 +163,13 @@ func fetchPeriod(ctx context.Context, creds map[string]string, from, to string) 
 	u := fmt.Sprintf("%s/periods/%s/%s/%s/transactions.json", baseURL, token, from, to)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, err
+		return nil, redactFio(err)
 	}
 	req.Header.Set("Accept", "application/json")
 	client := &http.Client{Timeout: 30 * time.Second}
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fio: %w", err)
+		return nil, fmt.Errorf("fio: %s", redactFioMsg(err.Error()))
 	}
 	defer res.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 8<<20))
@@ -176,13 +177,29 @@ func fetchPeriod(ctx context.Context, creds map[string]string, from, to string) 
 		return nil, errors.New("fio: 409 — token throttled (one request per 30s)")
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, fmt.Errorf("fio: status %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("fio: status %d: %s", res.StatusCode, redactFioMsg(strings.TrimSpace(string(body))))
 	}
 	var st statement
 	if err := json.Unmarshal(body, &st); err != nil {
-		return nil, fmt.Errorf("fio: decode: %w", err)
+		return nil, fmt.Errorf("fio: decode: %s", redactFioMsg(err.Error()))
 	}
 	return &st, nil
+}
+
+// fioTokenInURL matches the /periods/<token>/ segment that Fio embeds the
+// long-lived account token in. Errors and logs scrub it out so a bad day
+// (timeouts, 5xx HTML bodies) doesn't leak the credential.
+var fioTokenInURL = regexp.MustCompile(`/periods/[^/]+/`)
+
+func redactFioMsg(s string) string {
+	return fioTokenInURL.ReplaceAllString(s, "/periods/REDACTED/")
+}
+
+func redactFio(err error) error {
+	if err == nil {
+		return nil
+	}
+	return errors.New(redactFioMsg(err.Error()))
 }
 
 func toSlim(tx map[string]json.RawMessage) txSlim {

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/openrow/openrow/internal/connectors"
+	openrownet "github.com/openrow/openrow/internal/net"
 )
 
 func init() {
@@ -71,12 +72,9 @@ func postMessage(ctx context.Context, creds map[string]string, raw json.RawMessa
 	if strings.TrimSpace(in.Content) == "" {
 		return nil, errors.New("content is required")
 	}
-	hook := strings.TrimSpace(creds["webhook_url"])
-	if hook == "" {
-		return nil, errors.New("discord: webhook_url missing")
-	}
-	if _, err := url.Parse(hook); err != nil {
-		return nil, fmt.Errorf("discord: invalid webhook_url: %w", err)
+	hook, err := validateWebhookURL(creds["webhook_url"])
+	if err != nil {
+		return nil, err
 	}
 	payload, _ := json.Marshal(in)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, hook+"?wait=true", bytes.NewReader(payload))
@@ -107,9 +105,9 @@ func postMessage(ctx context.Context, creds map[string]string, raw json.RawMessa
 // test GETs the webhook URL; Discord returns the webhook metadata JSON
 // (id, name, channel_id, …) when the URL is valid.
 func test(ctx context.Context, creds map[string]string) error {
-	hook := strings.TrimSpace(creds["webhook_url"])
-	if hook == "" {
-		return errors.New("discord: webhook_url missing")
+	hook, err := validateWebhookURL(creds["webhook_url"])
+	if err != nil {
+		return err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, hook, nil)
 	if err != nil {
@@ -127,4 +125,33 @@ func test(ctx context.Context, creds map[string]string) error {
 		return fmt.Errorf("discord: status %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
+}
+
+// validateWebhookURL pins the credential to Discord's webhook host + path
+// shape. Without these checks the tenant-supplied URL is a generic SSRF
+// gadget that posts user-controlled JSON anywhere on the public internet.
+func validateWebhookURL(raw string) (string, error) {
+	hook := strings.TrimSpace(raw)
+	if hook == "" {
+		return "", errors.New("discord: webhook_url missing")
+	}
+	u, err := url.Parse(hook)
+	if err != nil {
+		return "", fmt.Errorf("discord: invalid webhook_url: %w", err)
+	}
+	if u.Scheme != "https" {
+		return "", errors.New("discord: webhook_url must be https")
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "discord.com" && host != "discordapp.com" &&
+		!strings.HasSuffix(host, ".discord.com") && !strings.HasSuffix(host, ".discordapp.com") {
+		return "", fmt.Errorf("discord: webhook_url host %q not in discord.com/discordapp.com", host)
+	}
+	if !strings.HasPrefix(u.Path, "/api/webhooks/") {
+		return "", errors.New("discord: webhook_url path must start with /api/webhooks/")
+	}
+	if err := openrownet.ValidateOutboundURL(hook, false); err != nil {
+		return "", fmt.Errorf("discord: webhook_url: %w", err)
+	}
+	return hook, nil
 }

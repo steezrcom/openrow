@@ -111,3 +111,25 @@ func TenantFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(tenantKey{}).(string)
 	return v
 }
+
+// CredentialUpdater persists a single credential-field change so OAuth
+// connectors can write back a rotated refresh_token.
+type CredentialUpdater func(ctx context.Context, field, value string) error
+
+type updaterKey struct{}
+
+// WithCredentialUpdater attaches a per-call updater so action handlers can
+// persist rotated tokens without holding a direct reference to the Service.
+func WithCredentialUpdater(ctx context.Context, u CredentialUpdater) context.Context {
+	if u == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, updaterKey{}, u)
+}
+
+// CredentialUpdaterFromContext returns the updater attached via
+// WithCredentialUpdater, or nil. Handlers should check for nil before calling.
+func CredentialUpdaterFromContext(ctx context.Context) CredentialUpdater {
+	u, _ := ctx.Value(updaterKey{}).(CredentialUpdater)
+	return u
+}

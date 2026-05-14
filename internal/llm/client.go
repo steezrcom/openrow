@@ -5,10 +5,61 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/sashabaranov/go-openai"
+
+	openrownet "github.com/openrow/openrow/internal/net"
 )
+
+// allowedLLMHosts is the explicit allowlist for hosted LLM providers.
+// Self-hosted / local endpoints (localhost, RFC1918) require the operator to
+// opt in via OPENROW_ALLOW_INTERNAL_LLM=true.
+var allowedLLMHosts = map[string]bool{
+	"api.anthropic.com":                true,
+	"api.openai.com":                   true,
+	"api.groq.com":                     true,
+	"generativelanguage.googleapis.com": true,
+	"api.together.xyz":                 true,
+	"api.deepseek.com":                 true,
+	"api.x.ai":                         true,
+	"openrouter.ai":                    true,
+}
+
+// ValidateLLMBaseURL checks an LLM base_url before any HTTP traffic. Public
+// endpoints must be on the allowlist; internal addresses require an explicit
+// operator opt-in. Returns the trimmed URL on success.
+func ValidateLLMBaseURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", errors.New("base_url is required")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid base_url: %w", err)
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return "", fmt.Errorf("base_url scheme %q not allowed", u.Scheme)
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return "", errors.New("base_url has no host")
+	}
+	allowInternal := strings.EqualFold(os.Getenv("OPENROW_ALLOW_INTERNAL_LLM"), "true")
+	if allowedLLMHosts[host] {
+		return raw, nil
+	}
+	if !allowInternal {
+		return "", fmt.Errorf("base_url host %q not in LLM allowlist; set OPENROW_ALLOW_INTERNAL_LLM=true for local endpoints", host)
+	}
+	if err := openrownet.ValidateOutboundURL(raw, true); err != nil {
+		return "", fmt.Errorf("base_url: %w", err)
+	}
+	return raw, nil
+}
 
 // NewClient builds a go-openai client against the given config. Local endpoints
 // (Ollama, LM Studio, etc.) may not require an API key; the SDK refuses empty
@@ -34,8 +85,8 @@ type ModelInfo struct {
 // and API key directly (used by the settings UI before a config is saved).
 func ListModels(ctx context.Context, baseURL, apiKey string) ([]ModelInfo, error) {
 	baseURL = normalizeBaseURL(baseURL)
-	if baseURL == "" {
-		return nil, errors.New("base_url is required")
+	if _, err := ValidateLLMBaseURL(baseURL); err != nil {
+		return nil, err
 	}
 	tmp := &Config{BaseURL: baseURL, APIKey: apiKey}
 	client := NewClient(tmp)
@@ -74,8 +125,8 @@ type TestResult struct {
 func Test(ctx context.Context, baseURL, apiKey, model string) TestResult {
 	baseURL = normalizeBaseURL(baseURL)
 	result := TestResult{Model: model}
-	if baseURL == "" {
-		result.Message = "base_url is required"
+	if _, err := ValidateLLMBaseURL(baseURL); err != nil {
+		result.Message = err.Error()
 		return result
 	}
 	if model == "" {

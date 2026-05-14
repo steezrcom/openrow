@@ -84,6 +84,7 @@ func (s *Server) createFlow(w http.ResponseWriter, r *http.Request) {
 	if res.WebhookTokenOnce != "" {
 		resp["webhook_url"] = webhookURL(r, m.TenantSlug, res.Flow.ID, res.WebhookTokenOnce)
 		resp["webhook_token_once"] = res.WebhookTokenOnce
+		resp["webhook_auth_hint"] = `Authorization: Bearer ` + res.WebhookTokenOnce
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -109,6 +110,7 @@ func (s *Server) rotateFlowWebhookToken(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"webhook_url":        webhookURL(r, m.TenantSlug, flow.ID, token),
 		"webhook_token_once": token,
+		"webhook_auth_hint":  `Authorization: Bearer ` + token,
 	})
 }
 

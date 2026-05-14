@@ -4,13 +4,47 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/openrow/openrow/internal/connectors"
 )
 
+// extractWebhookToken reads the per-flow auth token from the request.
+// Header carriers are preferred; the query-string fallback stays for senders
+// that can't set headers (Fio, some no-code platforms), but is logged so an
+// operator can encourage migration. Reading from headers keeps the secret
+// out of access logs and TLS-terminating proxy caches.
+func extractWebhookToken(r *http.Request, log *slog.Logger, flowID string) string {
+	if h := r.Header.Get("Authorization"); h != "" {
+		if rest, ok := strings.CutPrefix(h, "Bearer "); ok {
+			tok := strings.TrimSpace(rest)
+			if tok != "" {
+				return tok
+			}
+		}
+	}
+	if h := strings.TrimSpace(r.Header.Get("X-Openrow-Webhook-Token")); h != "" {
+		return h
+	}
+	if q := r.URL.Query().Get("token"); q != "" {
+		if log != nil {
+			log.Warn("webhook token presented in query string; prefer Authorization header",
+				"flow_id", flowID)
+		}
+		return q
+	}
+	return ""
+}
+
 // webhookReceive is the public endpoint flows hook up to external services.
-// Path: /webhooks/{tenant_slug}/{flow_id}?token=<plaintext>
+// Path: /webhooks/{tenant_slug}/{flow_id}
+// Token (in priority order):
+//   1. Authorization: Bearer <token>
+//   2. X-Openrow-Webhook-Token: <token>
+//   3. ?token=<plaintext> (fallback for senders that can't set headers,
+//      e.g. Fio's static webhook config; logged as a warning).
 //
 // Two auth layers:
 //   1. Per-flow token (always required) — rejects unknown senders outright.
@@ -25,7 +59,7 @@ import (
 func (s *Server) webhookReceive(w http.ResponseWriter, r *http.Request) {
 	tenantSlug := r.PathValue("tenant_slug")
 	flowID := r.PathValue("flow_id")
-	token := r.URL.Query().Get("token")
+	token := extractWebhookToken(r, s.log, flowID)
 
 	target, err := s.flows.ResolveWebhookTarget(r.Context(), tenantSlug, flowID, token)
 	if err != nil {

@@ -214,6 +214,9 @@ func (s *Service) Set(ctx context.Context, tenantID string, in SetInput) (*SafeC
 	if in.BaseURL == "" || !urlRe.MatchString(in.BaseURL) {
 		return nil, errors.New("base_url must start with http:// or https://")
 	}
+	if _, err := ValidateLLMBaseURL(in.BaseURL); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(in.Model) == "" {
 		return nil, errors.New("model is required")
 	}

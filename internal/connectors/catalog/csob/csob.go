@@ -19,12 +19,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/openrow/openrow/internal/connectors"
+	openrownet "github.com/openrow/openrow/internal/net"
 )
 
 const (
@@ -293,28 +295,61 @@ func parseSymbols(s string, out *txSlim) {
 // --- auth + http ---------------------------------------------------------
 
 func test(ctx context.Context, creds map[string]string) error {
+	if _, err := resolveBaseURL(creds); err != nil {
+		return err
+	}
 	_, err := call(ctx, creds, http.MethodGet, accountsPath, nil)
 	return err
 }
 
-func baseURL(creds map[string]string) string {
-	if explicit := strings.TrimSpace(creds["base_url"]); explicit != "" {
-		return strings.TrimRight(explicit, "/")
+// resolveBaseURL returns the validated base URL for ČSOB. Tenant-supplied
+// hosts are pinned to the csob.cz family to keep this from doubling as a
+// generic SSRF proxy. ValidateOutboundURL is layered on top for defence in
+// depth against IP-based hosts that resolve to private ranges.
+func resolveBaseURL(creds map[string]string) (string, error) {
+	raw := strings.TrimSpace(creds["base_url"])
+	if raw == "" {
+		if strings.EqualFold(strings.TrimSpace(creds["environment"]), "sandbox") {
+			return defaultSandboxBase, nil
+		}
+		return defaultProdBase, nil
 	}
-	if strings.EqualFold(strings.TrimSpace(creds["environment"]), "sandbox") {
-		return defaultSandboxBase
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("csob: invalid base_url: %w", err)
 	}
-	return defaultProdBase
+	if u.Scheme != "https" {
+		return "", errors.New("csob: base_url must be https")
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return "", errors.New("csob: base_url has no host")
+	}
+	if !(host == "api.csob.cz" || strings.HasSuffix(host, ".csob.cz")) {
+		return "", fmt.Errorf("csob: base_url host %q not in csob.cz", host)
+	}
+	if err := openrownet.ValidateOutboundURL(raw, false); err != nil {
+		return "", fmt.Errorf("csob: base_url: %w", err)
+	}
+	return strings.TrimRight(raw, "/"), nil
+}
+
+func baseURL(creds map[string]string) (string, error) {
+	return resolveBaseURL(creds)
 }
 
 func call(ctx context.Context, creds map[string]string, method, path string, body []byte) ([]byte, error) {
+	base, err := baseURL(creds)
+	if err != nil {
+		return nil, err
+	}
 	client := &http.Client{Timeout: 30 * time.Second}
-	token, err := acquireAccessToken(ctx, client, creds)
+	token, err := acquireAccessToken(ctx, client, creds, base)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, baseURL(creds)+path, bytesReaderOrNil(body))
+	req, err := http.NewRequestWithContext(ctx, method, base+path, bytesReaderOrNil(body))
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +371,7 @@ func call(ctx context.Context, creds map[string]string, method, path string, bod
 	return respBody, nil
 }
 
-func acquireAccessToken(ctx context.Context, client *http.Client, creds map[string]string) (string, error) {
+func acquireAccessToken(ctx context.Context, client *http.Client, creds map[string]string, base string) (string, error) {
 	clientID := strings.TrimSpace(creds["client_id"])
 	clientSecret := strings.TrimSpace(creds["client_secret"])
 	refresh := strings.TrimSpace(creds["refresh_token"])
@@ -350,7 +385,7 @@ func acquireAccessToken(ctx context.Context, client *http.Client, creds map[stri
 	form.Set("client_id", clientID)
 	form.Set("client_secret", clientSecret)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL(creds)+tokenPath, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+tokenPath, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", err
 	}
@@ -367,7 +402,8 @@ func acquireAccessToken(ctx context.Context, client *http.Client, creds map[stri
 		return "", fmt.Errorf("csob oauth: status %d: %s", res.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 	var out struct {
-		AccessToken string `json:"access_token"`
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 	if err := json.Unmarshal(respBody, &out); err != nil {
 		return "", fmt.Errorf("csob oauth: decode: %w", err)
@@ -375,7 +411,36 @@ func acquireAccessToken(ctx context.Context, client *http.Client, creds map[stri
 	if out.AccessToken == "" {
 		return "", errors.New("csob oauth: empty access token")
 	}
+	persistRotatedRefresh(ctx, "csob", refresh, out.RefreshToken)
 	return out.AccessToken, nil
+}
+
+// persistRotatedRefresh writes a new refresh_token back to storage when the
+// provider rotated it. If no updater is attached to ctx, it logs the rotation
+// (sanitised) so the operator can update the field manually.
+func persistRotatedRefresh(ctx context.Context, connectorID, old, fresh string) {
+	if fresh == "" || fresh == old {
+		return
+	}
+	if u := connectors.CredentialUpdaterFromContext(ctx); u != nil {
+		if err := u(ctx, "refresh_token", fresh); err != nil {
+			slog.Warn("oauth refresh rotation persist failed",
+				"connector", connectorID,
+				"err", err,
+				"new_token_hint", refreshTokenHint(fresh))
+		}
+		return
+	}
+	slog.Info("oauth refresh_token rotated; no persister wired — update credentials manually",
+		"connector", connectorID,
+		"new_token_hint", refreshTokenHint(fresh))
+}
+
+func refreshTokenHint(s string) string {
+	if len(s) <= 8 {
+		return "***"
+	}
+	return s[:4] + "..." + s[len(s)-4:]
 }
 
 // --- helpers -------------------------------------------------------------

@@ -230,6 +230,43 @@ func (s *Service) Upsert(ctx context.Context, tenantID, connectorID string, in U
 	return s.Get(ctx, tenantID, connectorID)
 }
 
+// UpdateCredentialField merges a single field into the stored credential blob
+// and re-encrypts it. Used by OAuth connectors to persist a rotated
+// refresh_token returned from the token endpoint without rewriting the whole
+// config. No-op if the value is unchanged.
+func (s *Service) UpdateCredentialField(ctx context.Context, tenantID, connectorID, field, value string) error {
+	if field == "" {
+		return errors.New("field is required")
+	}
+	cfg, err := s.Get(ctx, tenantID, connectorID)
+	if err != nil {
+		return err
+	}
+	if cfg.Credentials[field] == value {
+		return nil
+	}
+	merged := make(map[string]string, len(cfg.Credentials)+1)
+	for k, v := range cfg.Credentials {
+		merged[k] = v
+	}
+	merged[field] = value
+
+	encoded, err := json.Marshal(merged)
+	if err != nil {
+		return err
+	}
+	blob, err := s.enc.Encrypt(encoded)
+	if err != nil {
+		return fmt.Errorf("encrypt credentials: %w", err)
+	}
+	_, err = s.pool.Exec(ctx, `
+		UPDATE openrow.connector_configs
+		SET credentials = $3, updated_at = now()
+		WHERE tenant_id = $1 AND connector_id = $2`,
+		tenantID, connectorID, blob)
+	return err
+}
+
 // Test calls the connector's Test hook against the stored config.
 // Returns ErrNotConfigured if no config exists, ErrTestNotSupported if the
 // connector descriptor has no Test func, or whatever the hook returns.

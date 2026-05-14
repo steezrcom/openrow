@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -350,8 +351,9 @@ func acquireAccessToken(ctx context.Context, client *http.Client, creds map[stri
 	}
 
 	var out struct {
-		AccessToken string `json:"access_token"`
-		TokenType   string `json:"token_type"`
+		AccessToken  string `json:"access_token"`
+		TokenType    string `json:"token_type"`
+		RefreshToken string `json:"refresh_token"`
 	}
 	if err := json.Unmarshal(respBody, &out); err != nil {
 		return "", fmt.Errorf("revolut oauth: decode: %w", err)
@@ -359,7 +361,33 @@ func acquireAccessToken(ctx context.Context, client *http.Client, creds map[stri
 	if out.AccessToken == "" {
 		return "", errors.New("revolut oauth: empty access token")
 	}
+	persistRotatedRefresh(ctx, "revolut", refresh, out.RefreshToken)
 	return out.AccessToken, nil
+}
+
+func persistRotatedRefresh(ctx context.Context, connectorID, old, fresh string) {
+	if fresh == "" || fresh == old {
+		return
+	}
+	if u := connectors.CredentialUpdaterFromContext(ctx); u != nil {
+		if err := u(ctx, "refresh_token", fresh); err != nil {
+			slog.Warn("oauth refresh rotation persist failed",
+				"connector", connectorID,
+				"err", err,
+				"new_token_hint", refreshTokenHint(fresh))
+		}
+		return
+	}
+	slog.Info("oauth refresh_token rotated; no persister wired — update credentials manually",
+		"connector", connectorID,
+		"new_token_hint", refreshTokenHint(fresh))
+}
+
+func refreshTokenHint(s string) string {
+	if len(s) <= 8 {
+		return "***"
+	}
+	return s[:4] + "..." + s[len(s)-4:]
 }
 
 // signAssertion builds and signs the RS256 JWT client assertion Revolut

@@ -40,7 +40,7 @@ func main() {
 	slog.SetDefault(log)
 
 	email := flag.String("email", "demo@openrow.local", "demo user's email")
-	password := flag.String("password", "openrow123", "demo user's password (min 10 chars)")
+	password := flag.String("password", "", "demo user's password (min 10 chars). Prefer OPENROW_SEED_PASSWORD env var; the flag is captured by process listings.")
 	userName := flag.String("name", "Demo User", "demo user's display name")
 	tenantSlug := flag.String("tenant-slug", "demo", "tenant slug (a-z0-9_, max 31 chars)")
 	tenantName := flag.String("tenant-name", "Demo Agency", "tenant display name")
@@ -52,6 +52,18 @@ func main() {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		log.Error("DATABASE_URL is required")
+		os.Exit(1)
+	}
+
+	resolvedPassword := os.Getenv("OPENROW_SEED_PASSWORD")
+	if resolvedPassword != "" && *password != "" {
+		log.Warn("both OPENROW_SEED_PASSWORD env var and -password flag set; env var wins")
+	}
+	if resolvedPassword == "" {
+		resolvedPassword = *password
+	}
+	if resolvedPassword == "" {
+		log.Error("password is required: set OPENROW_SEED_PASSWORD or pass -password")
 		os.Exit(1)
 	}
 
@@ -72,7 +84,7 @@ func main() {
 
 	if err := run(ctx, log, pool, opts{
 		email:      *email,
-		password:   *password,
+		password:   resolvedPassword,
 		userName:   *userName,
 		tenantSlug: *tenantSlug,
 		tenantName: *tenantName,
@@ -141,7 +153,7 @@ func run(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, o opts) erro
 
 	if o.noData {
 		log.Info("no-data flag set; skipping demo rows")
-		log.Info("done", "email", user.Email, "password", o.password, "tenant", tn.Slug)
+		log.Info("done", "email", user.Email, "tenant", tn.Slug)
 		return nil
 	}
 
@@ -155,7 +167,7 @@ func run(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, o opts) erro
 	}
 	if n > 0 && !o.forceData {
 		log.Info("demo rows already present, skipping data seed", "clients", n)
-		log.Info("done", "email", user.Email, "password", o.password, "tenant", tn.Slug)
+		log.Info("done", "email", user.Email, "tenant", tn.Slug)
 		return nil
 	}
 
