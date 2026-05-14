@@ -236,7 +236,58 @@ func (s *Server) Handler() http.Handler {
 		Memberships: s.memberships,
 	}).Attach
 
-	return s.secureHeaders(s.sameOriginCheck(attach(mux)))
+	return s.canonicalHost(s.secureHeaders(s.sameOriginCheck(attach(mux))))
+}
+
+// canonicalHost 301-redirects any request whose Host header differs from
+// the configured APP_URL host to the canonical scheme+host. Keeps users
+// off bare-vs-www variants where the SPA loads but POSTs trip the
+// same-origin CSRF check. Skips:
+//
+//   - /healthz so dokku/k8s loopback health probes always succeed
+//   - /.well-known/* so Let's Encrypt http-01 challenges can validate
+//     non-canonical hosts and keep their certs alive
+//   - requests where the parsed app URL has no host (dev mode without
+//     APP_URL configured)
+//
+// Method handling: GET/HEAD use 301; other methods would lose the body
+// on a redirect, so we serve them on the wrong host. With same-origin
+// CSRF in place those POSTs will get rejected with "forbidden origin",
+// which is the right answer for an attacker but the wrong answer for a
+// user who just typed the bare domain. The SPA itself only ever issues
+// same-origin XHRs, so once the GET lands on the canonical host the
+// subsequent POSTs are fine.
+func (s *Server) canonicalHost(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.appHost == "" || s.appOrigin == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		host := r.Host
+		// Strip any :port suffix; dokku/nginx already terminates TLS
+		// so we compare on hostname only.
+		if i := strings.LastIndex(host, ":"); i >= 0 {
+			if _, err := strconv.Atoi(host[i+1:]); err == nil {
+				host = host[:i]
+			}
+		}
+		if host == "" || strings.EqualFold(host, s.appHost) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if r.URL.Path == "/healthz" || strings.HasPrefix(r.URL.Path, "/.well-known/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			// Don't redirect mutating requests — the body would be lost.
+			// Let same-origin CSRF take care of rejecting them.
+			next.ServeHTTP(w, r)
+			return
+		}
+		target := s.appOrigin + r.URL.RequestURI()
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+	})
 }
 
 func (s *Server) secureHeaders(next http.Handler) http.Handler {
