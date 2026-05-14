@@ -1,6 +1,10 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { api, ApiError } from '@/lib/api'
+import { MarketingHome } from '@/components/MarketingHome'
 
+// Root route. Logged-in users with an active workspace go straight to
+// /app; logged-in users without a workspace go to /orgs to pick one.
+// Anonymous visitors get the marketing page below.
 export const Route = createFileRoute('/')({
   beforeLoad: async ({ context }) => {
     try {
@@ -13,9 +17,11 @@ export const Route = createFileRoute('/')({
       throw redirect({ to: '/orgs' })
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        throw redirect({ to: '/login' })
+        // Anonymous — render the marketing page.
+        return
       }
       throw err
     }
   },
+  component: MarketingHome,
 })
