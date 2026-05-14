@@ -100,6 +100,20 @@ func run(log *slog.Logger) error {
 	flowScheduler := flows.NewScheduler(flowSvc, flowDispatcher, log)
 	flowScheduler.Start(ctx)
 
+	secureCookies := !strings.EqualFold(strings.TrimSpace(os.Getenv("INSECURE_COOKIES_FOR_DEV")), "true")
+
+	// Mailer selection: in dev (secure-cookies off) we use Stdout so the
+	// developer can see the reset link inline; in any production-shaped
+	// deployment we fall back to Noop, which logs recipient + subject only
+	// and never the body. A future SMTP/SES/Resend mailer should slot in
+	// here, driven by env config.
+	var mail mailer.Mailer = &mailer.Noop{Log: log}
+	if !secureCookies {
+		mail = &mailer.Stdout{Log: log}
+	} else {
+		log.Warn("no mail provider configured; password resets will not be delivered. Wire a real Mailer for production.")
+	}
+
 	api := httpapi.New(httpapi.Deps{
 		Log:              log,
 		Users:            auth.NewUserService(pool),
@@ -117,10 +131,10 @@ func run(log *slog.Logger) error {
 		Flows:            flowSvc,
 		FlowRunner:       flowRunner,
 		FlowDispatcher:   flowDispatcher,
-		Mailer:           &mailer.Stdout{Log: log},
+		Mailer:           mail,
 		ExternalBindings: externalBindings,
 		AppURL:           getOr("APP_URL", "http://localhost:5173"),
-		SecureCookies:    !strings.EqualFold(strings.TrimSpace(os.Getenv("INSECURE_COOKIES_FOR_DEV")), "true"),
+		SecureCookies:    secureCookies,
 		SPADir:           os.Getenv("SPA_DIR"),
 	})
 

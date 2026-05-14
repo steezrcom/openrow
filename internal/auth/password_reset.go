@@ -43,6 +43,15 @@ func (s *PasswordResetService) Create(ctx context.Context, email string) (token,
 		return "", "", "", err
 	}
 	expires := time.Now().UTC().Add(passwordResetLifetime)
+	// Invalidate any unused tokens for this user first — a fresh "forgot"
+	// supersedes earlier emails, so the previous links stop working even
+	// if their TTL hasn't expired yet.
+	if _, err := s.pool.Exec(ctx,
+		`UPDATE openrow.password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL`,
+		userID,
+	); err != nil {
+		return "", "", "", err
+	}
 	if _, err := s.pool.Exec(ctx, `
 		INSERT INTO openrow.password_resets (token, user_id, expires_at) VALUES ($1, $2, $3)`,
 		tok, userID, expires,
@@ -71,7 +80,8 @@ func (s *PasswordResetService) Consume(ctx context.Context, token, newPassword s
 	err = tx.QueryRow(ctx, `
 		SELECT user_id, expires_at, used_at
 		FROM openrow.password_resets
-		WHERE token = $1`, token,
+		WHERE token = $1
+		FOR UPDATE`, token,
 	).Scan(&userID, &expiresAt, &usedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("invalid or expired token")

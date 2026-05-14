@@ -110,3 +110,38 @@ func RequireMembership(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// roleRank gives an ordering for role comparisons.
+// owner > admin > member; unknown roles compare as -1 (lower than any valid role).
+func roleRank(r Role) int {
+	switch r {
+	case RoleOwner:
+		return 3
+	case RoleAdmin:
+		return 2
+	case RoleMember:
+		return 1
+	}
+	return -1
+}
+
+// RequireRole gates access to endpoints by minimum membership role.
+// Owner is required for the most destructive operations (rotate webhook
+// tokens, install templates, replace connector secrets, delete dashboards
+// and entities). Admin is the default for write-class settings. Member
+// covers ordinary row CRUD and reads. Use the lowest role that still
+// keeps non-trusted seats from breaking the workspace.
+func RequireRole(min Role, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		m, ok := MembershipFromContext(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusForbidden, "no active organization")
+			return
+		}
+		if roleRank(m.Role) < roleRank(min) {
+			writeJSONError(w, http.StatusForbidden, "insufficient role")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}

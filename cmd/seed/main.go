@@ -175,7 +175,7 @@ func run(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, o opts) erro
 		return fmt.Errorf("seed data: %w", err)
 	}
 
-	log.Info("done", "email", user.Email, "password", o.password, "tenant", tn.Slug)
+	log.Info("done", "email", user.Email, "tenant", tn.Slug)
 	return nil
 }
 

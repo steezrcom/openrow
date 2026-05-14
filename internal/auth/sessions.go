@@ -3,7 +3,9 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -18,6 +20,11 @@ const (
 	refreshInterval = 6 * time.Hour
 )
 
+// Session.ID in this struct is the plaintext cookie value. The DB stores
+// a SHA-256 hash of that token in the sessions.id column; the plaintext
+// never lands in the DB. Lookup hashes the incoming cookie before the
+// SELECT. This protects users if the DB is ever exfiltrated without the
+// process memory.
 type Session struct {
 	ID             string
 	UserID         string
@@ -43,11 +50,21 @@ func newToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
+// hashSessionToken returns the on-disk identifier for a session — a
+// hex-encoded SHA-256 of the token. A constant-effort, dependency-free
+// hash is enough here because tokens are 32 bytes of crypto/rand, so
+// pre-image attacks via the DB hash are not feasible.
+func hashSessionToken(tok string) string {
+	sum := sha256.Sum256([]byte(tok))
+	return hex.EncodeToString(sum[:])
+}
+
 func (s *SessionService) Create(ctx context.Context, userID string) (*Session, error) {
-	id, err := newToken()
+	tok, err := newToken()
 	if err != nil {
 		return nil, err
 	}
+	id := hashSessionToken(tok)
 	now := time.Now().UTC()
 	expires := now.Add(sessionLifetime)
 	if _, err := s.pool.Exec(ctx, `
@@ -56,15 +73,19 @@ func (s *SessionService) Create(ctx context.Context, userID string) (*Session, e
 		id, userID, now, expires); err != nil {
 		return nil, err
 	}
-	return &Session{ID: id, UserID: userID, CreatedAt: now, LastSeenAt: now, ExpiresAt: expires}, nil
+	// The struct returned to the caller carries the plaintext token —
+	// they need it to set the cookie. Nothing else should persist it.
+	return &Session{ID: tok, UserID: userID, CreatedAt: now, LastSeenAt: now, ExpiresAt: expires}, nil
 }
 
 // Lookup fetches a valid (non-expired) session. Returns nil (no error) when missing/expired.
 // If the session is older than refreshInterval it bumps last_seen_at and extends expires_at.
-func (s *SessionService) Lookup(ctx context.Context, id string) (*Session, error) {
-	if id == "" {
+// Input is the plaintext cookie token; we hash it before the SELECT.
+func (s *SessionService) Lookup(ctx context.Context, tok string) (*Session, error) {
+	if tok == "" {
 		return nil, nil
 	}
+	id := hashSessionToken(tok)
 	var sess Session
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, user_id, active_tenant_id, created_at, last_seen_at, expires_at
@@ -77,6 +98,9 @@ func (s *SessionService) Lookup(ctx context.Context, id string) (*Session, error
 	if err != nil {
 		return nil, err
 	}
+	// Hand the plaintext back to the caller so callers that re-set the
+	// cookie see the original. Internal logic doesn't need either.
+	sess.ID = tok
 	now := time.Now().UTC()
 	if now.After(sess.ExpiresAt) {
 		_, _ = s.pool.Exec(ctx, `DELETE FROM openrow.sessions WHERE id = $1`, id)
@@ -96,15 +120,15 @@ func (s *SessionService) Lookup(ctx context.Context, id string) (*Session, error
 	return &sess, nil
 }
 
-func (s *SessionService) Delete(ctx context.Context, id string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM openrow.sessions WHERE id = $1`, id)
+func (s *SessionService) Delete(ctx context.Context, tok string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM openrow.sessions WHERE id = $1`, hashSessionToken(tok))
 	return err
 }
 
-func (s *SessionService) SetActiveTenant(ctx context.Context, sessionID, tenantID string) error {
+func (s *SessionService) SetActiveTenant(ctx context.Context, sessionToken, tenantID string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE openrow.sessions SET active_tenant_id = $1 WHERE id = $2`,
-		tenantID, sessionID)
+		tenantID, hashSessionToken(sessionToken))
 	return err
 }
 

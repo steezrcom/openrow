@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/mail"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alexedwards/argon2id"
@@ -80,9 +81,38 @@ func (s *UserService) Signup(ctx context.Context, email, name, password string) 
 	return &u, nil
 }
 
+// timingShieldHash is a real argon2id hash of a dummy password. We compute
+// it once at first use and reuse the result so that login attempts for
+// missing users do the same amount of work as for existing users. Without
+// this, the "user not found" branch returns in microseconds while the
+// "user found, wrong password" branch waits for argon2 to run — a textbook
+// timing oracle.
+var (
+	timingShieldHashOnce sync.Once
+	timingShieldHash     string
+)
+
+func dummyHash() string {
+	timingShieldHashOnce.Do(func() {
+		h, err := argon2id.CreateHash("timing-shield-not-a-real-password", argon2id.DefaultParams)
+		if err == nil {
+			timingShieldHash = h
+			return
+		}
+		// argon2id.CreateHash only fails on parameter-validation, which can't
+		// happen with DefaultParams. The fallback is a constant-time-equivalent
+		// no-op hash that ComparePasswordAndHash will reject the same way.
+		timingShieldHash = "$argon2id$v=19$m=65536,t=3,p=2$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	})
+	return timingShieldHash
+}
+
 func (s *UserService) Authenticate(ctx context.Context, email, password string) (*User, error) {
 	em, err := normalizeEmail(email)
 	if err != nil {
+		// Still pay the argon2 cost so a malformed email doesn't look
+		// different from a valid-but-unknown one.
+		_, _ = argon2id.ComparePasswordAndHash(password, dummyHash())
 		return nil, ErrInvalidCredentials
 	}
 	var (
@@ -95,7 +125,8 @@ func (s *UserService) Authenticate(ctx context.Context, email, password string) 
 		WHERE email = $1`, em,
 	).Scan(&u.ID, &u.Email, &u.Name, &u.EmailVerifiedAt, &u.CreatedAt, &hash)
 	if errors.Is(err, pgx.ErrNoRows) {
-		_, _ = argon2id.ComparePasswordAndHash("timing-attack-shield", hash)
+		// Equalise hashing work between "user exists" and "user missing".
+		_, _ = argon2id.ComparePasswordAndHash(password, dummyHash())
 		return nil, ErrInvalidCredentials
 	}
 	if err != nil {

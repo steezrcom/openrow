@@ -4,7 +4,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/openrow/openrow/internal/ai"
 	"github.com/openrow/openrow/internal/auth"
@@ -37,6 +39,9 @@ type Server struct {
 	flowRunner       *flows.Runner
 	flowDispatcher   flows.Dispatcher
 	chatLimiter      *ratelimit.Keyed
+	loginLimiter     *ratelimit.Keyed
+	signupLimiter    *ratelimit.Keyed
+	resetLimiter     *ratelimit.Keyed
 	mail             mailer.Mailer
 	appURL           string
 	appOrigin        string
@@ -87,6 +92,13 @@ func New(d Deps) *Server {
 	// Chat rate limit: avg 1 message every 2s per user, burst of 5.
 	// Plenty for real usage; blocks only pathological loops / abuse.
 	chatLim := ratelimit.New(0.5, 5)
+	// Auth-endpoint rate limits, all keyed by client IP. Login allows
+	// rapid retries (typo recovery) but caps brute-force throughput.
+	// Signup and password-reset are stricter — these are the enumeration
+	// and email-spam vectors.
+	loginLim := ratelimit.New(0.5, 5)         // 1 / 2s avg, burst 5
+	signupLim := ratelimit.New(1.0/600.0, 3)  // ~3 per hour, burst 3
+	resetLim := ratelimit.New(1.0/600.0, 3)   // ~3 per hour, burst 3
 	return &Server{
 		log:              d.Log,
 		users:            d.Users,
@@ -105,6 +117,9 @@ func New(d Deps) *Server {
 		flowRunner:       d.FlowRunner,
 		flowDispatcher:   d.FlowDispatcher,
 		chatLimiter:      chatLim,
+		loginLimiter:     loginLim,
+		signupLimiter:    signupLim,
+		resetLimiter:     resetLim,
 		mail:             d.Mailer,
 		appURL:           appURL,
 		appOrigin:        appOrigin,
@@ -118,12 +133,14 @@ func New(d Deps) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	// Public
-	mux.HandleFunc("POST /api/v1/auth/signup", s.signup)
-	mux.HandleFunc("POST /api/v1/auth/login", s.login)
+	// Public — rate-limited by client IP to blunt brute-force, enumeration
+	// and reset-link spam. Each endpoint has its own bucket so a flooded
+	// /forgot doesn't lock out /login.
+	mux.Handle("POST /api/v1/auth/signup", rateLimitByIP(s.signupLimiter, http.HandlerFunc(s.signup)))
+	mux.Handle("POST /api/v1/auth/login", rateLimitByIP(s.loginLimiter, http.HandlerFunc(s.login)))
 	mux.HandleFunc("POST /api/v1/auth/logout", s.logout)
-	mux.HandleFunc("POST /api/v1/auth/forgot", s.forgotPassword)
-	mux.HandleFunc("POST /api/v1/auth/reset", s.resetPassword)
+	mux.Handle("POST /api/v1/auth/forgot", rateLimitByIP(s.resetLimiter, http.HandlerFunc(s.forgotPassword)))
+	mux.Handle("POST /api/v1/auth/reset", rateLimitByIP(s.resetLimiter, http.HandlerFunc(s.resetPassword)))
 	mux.HandleFunc("POST /webhooks/{tenant_slug}/{flow_id}", s.webhookReceive)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -135,17 +152,25 @@ func (s *Server) Handler() http.Handler {
 	authed.HandleFunc("POST /api/v1/orgs", s.createOrg)
 	authed.HandleFunc("POST /api/v1/memberships/{id}/activate", s.activateMembership)
 
-	// Authed + active org required
+	// Authed + active org required.
+	//
+	// Role policy:
+	//   member: row CRUD, reads, chat, ordinary view CRUD, execute reports/queries.
+	//   admin: schema mutations (create entity, add field, create dashboard / report,
+	//          create / patch flow, write connector + LLM config, trigger flows,
+	//          resolve approvals).
+	//   owner: destructive ops (drop field, apply template, delete entity field /
+	//          flow / dashboard / report / connector, rotate webhook token, wipe LLM config).
 	authed.Handle("GET /api/v1/entities", auth.RequireMembership(http.HandlerFunc(s.listEntities)))
-	authed.Handle("POST /api/v1/entities", auth.RequireMembership(http.HandlerFunc(s.proposeEntity)))
-	authed.Handle("POST /api/v1/entities/spec", auth.RequireMembership(http.HandlerFunc(s.createEntityFromSpec)))
+	authed.Handle("POST /api/v1/entities", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.proposeEntity)))
+	authed.Handle("POST /api/v1/entities/spec", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.createEntityFromSpec)))
 	authed.Handle("GET /api/v1/entities/{name}", auth.RequireMembership(http.HandlerFunc(s.getEntity)))
 	authed.Handle("GET /api/v1/entities/{name}/rows", auth.RequireMembership(http.HandlerFunc(s.listRows)))
 	authed.Handle("POST /api/v1/entities/{name}/rows", auth.RequireMembership(http.HandlerFunc(s.createRow)))
 	authed.Handle("DELETE /api/v1/entities/{name}/rows/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteRow)))
 	authed.Handle("PATCH /api/v1/entities/{name}/rows/{id}", auth.RequireMembership(http.HandlerFunc(s.updateRow)))
-	authed.Handle("POST /api/v1/entities/{name}/fields", auth.RequireMembership(http.HandlerFunc(s.addField)))
-	authed.Handle("DELETE /api/v1/entities/{name}/fields/{field}", auth.RequireMembership(http.HandlerFunc(s.dropField)))
+	authed.Handle("POST /api/v1/entities/{name}/fields", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.addField)))
+	authed.Handle("DELETE /api/v1/entities/{name}/fields/{field}", auth.RequireRole(auth.RoleOwner, http.HandlerFunc(s.dropField)))
 	authed.Handle("GET /api/v1/entities/{name}/fields/{field}/options", auth.RequireMembership(http.HandlerFunc(s.listFieldOptions)))
 	authed.Handle("GET /api/v1/entities/{name}/views", auth.RequireMembership(http.HandlerFunc(s.listViews)))
 	authed.Handle("POST /api/v1/entities/{name}/views", auth.RequireMembership(http.HandlerFunc(s.createView)))
@@ -154,44 +179,44 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("POST /api/v1/chat/messages/stream", auth.RequireMembership(http.HandlerFunc(s.chatStream)))
 
 	authed.Handle("GET /api/v1/templates", auth.RequireAuth(http.HandlerFunc(s.listTemplates)))
-	authed.Handle("POST /api/v1/templates/{id}/apply", auth.RequireMembership(http.HandlerFunc(s.applyTemplate)))
+	authed.Handle("POST /api/v1/templates/{id}/apply", auth.RequireRole(auth.RoleOwner, http.HandlerFunc(s.applyTemplate)))
 
 	authed.Handle("GET /api/v1/llm/providers", auth.RequireAuth(http.HandlerFunc(s.listLLMProviders)))
 	authed.Handle("GET /api/v1/llm/config", auth.RequireMembership(http.HandlerFunc(s.getLLMConfig)))
-	authed.Handle("PUT /api/v1/llm/config", auth.RequireMembership(http.HandlerFunc(s.putLLMConfig)))
-	authed.Handle("DELETE /api/v1/llm/config", auth.RequireMembership(http.HandlerFunc(s.deleteLLMConfig)))
+	authed.Handle("PUT /api/v1/llm/config", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.putLLMConfig)))
+	authed.Handle("DELETE /api/v1/llm/config", auth.RequireRole(auth.RoleOwner, http.HandlerFunc(s.deleteLLMConfig)))
 	authed.Handle("POST /api/v1/llm/models/list", auth.RequireAuth(http.HandlerFunc(s.listLLMModels)))
 	authed.Handle("POST /api/v1/llm/test", auth.RequireAuth(http.HandlerFunc(s.testLLM)))
 	authed.Handle("POST /api/v1/llm/self-test", auth.RequireMembership(http.HandlerFunc(s.selfTestLLM)))
 
 	authed.Handle("GET /api/v1/flows", auth.RequireMembership(http.HandlerFunc(s.listFlows)))
-	authed.Handle("POST /api/v1/flows", auth.RequireMembership(http.HandlerFunc(s.createFlow)))
+	authed.Handle("POST /api/v1/flows", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.createFlow)))
 	authed.Handle("GET /api/v1/flows/tools", auth.RequireMembership(http.HandlerFunc(s.listFlowTools)))
 	authed.Handle("GET /api/v1/flows/{id}", auth.RequireMembership(http.HandlerFunc(s.getFlow)))
-	authed.Handle("PATCH /api/v1/flows/{id}", auth.RequireMembership(http.HandlerFunc(s.patchFlow)))
-	authed.Handle("DELETE /api/v1/flows/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteFlow)))
-	authed.Handle("POST /api/v1/flows/{id}/trigger", auth.RequireMembership(http.HandlerFunc(s.triggerFlow)))
-	authed.Handle("POST /api/v1/flows/{id}/webhook_token", auth.RequireMembership(http.HandlerFunc(s.rotateFlowWebhookToken)))
+	authed.Handle("PATCH /api/v1/flows/{id}", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.patchFlow)))
+	authed.Handle("DELETE /api/v1/flows/{id}", auth.RequireRole(auth.RoleOwner, http.HandlerFunc(s.deleteFlow)))
+	authed.Handle("POST /api/v1/flows/{id}/trigger", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.triggerFlow)))
+	authed.Handle("POST /api/v1/flows/{id}/webhook_token", auth.RequireRole(auth.RoleOwner, http.HandlerFunc(s.rotateFlowWebhookToken)))
 	authed.Handle("GET /api/v1/flows/{id}/runs", auth.RequireMembership(http.HandlerFunc(s.listFlowRuns)))
 	authed.Handle("GET /api/v1/flow_runs/{run_id}", auth.RequireMembership(http.HandlerFunc(s.getFlowRun)))
 	authed.Handle("GET /api/v1/flow_approvals", auth.RequireMembership(http.HandlerFunc(s.listFlowApprovals)))
-	authed.Handle("POST /api/v1/flow_approvals/{id}/resolve", auth.RequireMembership(http.HandlerFunc(s.resolveFlowApproval)))
+	authed.Handle("POST /api/v1/flow_approvals/{id}/resolve", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.resolveFlowApproval)))
 
 	authed.Handle("GET /api/v1/connectors", auth.RequireAuth(http.HandlerFunc(s.listConnectors)))
 	authed.Handle("GET /api/v1/connectors/configs", auth.RequireMembership(http.HandlerFunc(s.listConnectorConfigs)))
-	authed.Handle("PUT /api/v1/connectors/configs/{id}", auth.RequireMembership(http.HandlerFunc(s.putConnectorConfig)))
-	authed.Handle("POST /api/v1/connectors/configs/{id}/test", auth.RequireMembership(http.HandlerFunc(s.testConnectorConfig)))
-	authed.Handle("DELETE /api/v1/connectors/configs/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteConnectorConfig)))
+	authed.Handle("PUT /api/v1/connectors/configs/{id}", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.putConnectorConfig)))
+	authed.Handle("POST /api/v1/connectors/configs/{id}/test", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.testConnectorConfig)))
+	authed.Handle("DELETE /api/v1/connectors/configs/{id}", auth.RequireRole(auth.RoleOwner, http.HandlerFunc(s.deleteConnectorConfig)))
 
 	authed.Handle("GET /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.listDashboards)))
-	authed.Handle("POST /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.createDashboard)))
+	authed.Handle("POST /api/v1/dashboards", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.createDashboard)))
 	authed.Handle("GET /api/v1/dashboards/{slug}", auth.RequireMembership(http.HandlerFunc(s.getDashboard)))
-	authed.Handle("PATCH /api/v1/dashboards/{slug}", auth.RequireMembership(http.HandlerFunc(s.patchDashboard)))
-	authed.Handle("DELETE /api/v1/dashboards/{slug}", auth.RequireMembership(http.HandlerFunc(s.deleteDashboard)))
-	authed.Handle("POST /api/v1/dashboards/{slug}/reports", auth.RequireMembership(http.HandlerFunc(s.addReport)))
-	authed.Handle("POST /api/v1/dashboards/{slug}/reports/reorder", auth.RequireMembership(http.HandlerFunc(s.reorderReports)))
-	authed.Handle("PATCH /api/v1/reports/{id}", auth.RequireMembership(http.HandlerFunc(s.patchReport)))
-	authed.Handle("DELETE /api/v1/reports/{id}", auth.RequireMembership(http.HandlerFunc(s.deleteReport)))
+	authed.Handle("PATCH /api/v1/dashboards/{slug}", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.patchDashboard)))
+	authed.Handle("DELETE /api/v1/dashboards/{slug}", auth.RequireRole(auth.RoleOwner, http.HandlerFunc(s.deleteDashboard)))
+	authed.Handle("POST /api/v1/dashboards/{slug}/reports", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.addReport)))
+	authed.Handle("POST /api/v1/dashboards/{slug}/reports/reorder", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.reorderReports)))
+	authed.Handle("PATCH /api/v1/reports/{id}", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.patchReport)))
+	authed.Handle("DELETE /api/v1/reports/{id}", auth.RequireRole(auth.RoleOwner, http.HandlerFunc(s.deleteReport)))
 	authed.Handle("POST /api/v1/reports/{id}/execute", auth.RequireMembership(http.HandlerFunc(s.executeReport)))
 	authed.Handle("POST /api/v1/queries/execute", auth.RequireMembership(http.HandlerFunc(s.executeQuery)))
 
@@ -286,6 +311,51 @@ func requireJSON(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// rateLimitByIP applies a Keyed limiter on the request's source IP. Used
+// on the unauthenticated auth endpoints (login / signup / forgot / reset)
+// to make brute-force, enumeration and email-flood attacks pay a real
+// cost per IP. The key falls back to the raw RemoteAddr when there's no
+// X-Forwarded-For — fine for a dokku deployment where nginx already
+// terminates and rewrites client IPs into the header.
+func rateLimitByIP(lim *ratelimit.Keyed, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := clientIP(r)
+		if ok, retry := lim.Allow(ip); !ok {
+			w.Header().Set("Retry-After", retrySeconds(retry))
+			writeErr(w, http.StatusTooManyRequests, "too many requests")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// First entry is the original client; the rest are proxies.
+		if comma := strings.Index(xff, ","); comma >= 0 {
+			return strings.TrimSpace(xff[:comma])
+		}
+		return strings.TrimSpace(xff)
+	}
+	if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
+		return strings.TrimSpace(xrip)
+	}
+	// Fallback: RemoteAddr is "host:port"; strip the port.
+	addr := r.RemoteAddr
+	if i := strings.LastIndex(addr, ":"); i >= 0 {
+		return addr[:i]
+	}
+	return addr
+}
+
+func retrySeconds(d time.Duration) string {
+	secs := int(d.Round(time.Second).Seconds())
+	if secs < 1 {
+		secs = 1
+	}
+	return strconv.Itoa(secs)
 }
 
 func limitBody(next http.Handler) http.Handler {
