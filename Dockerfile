@@ -15,7 +15,8 @@ ENV CGO_ENABLED=0
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -trimpath -ldflags="-s -w" -o /out/openrow ./cmd/server
+RUN go build -trimpath -ldflags="-s -w" -o /out/openrow ./cmd/server \
+ && go build -trimpath -ldflags="-s -w" -o /out/seed ./cmd/seed
 
 # Stage 3: runtime
 FROM alpine:3.20
@@ -25,6 +26,7 @@ RUN apk add --no-cache ca-certificates tzdata \
 
 WORKDIR /app
 COPY --from=api /out/openrow /app/openrow
+COPY --from=api /out/seed /app/seed
 COPY --from=web /web/dist /app/web/dist
 
 ENV SPA_DIR=/app/web/dist \

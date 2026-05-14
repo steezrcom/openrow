@@ -46,6 +46,7 @@ func main() {
 	tenantName := flag.String("tenant-name", "Demo Agency", "tenant display name")
 	reset := flag.Bool("reset", false, "drop the tenant schema + metadata before re-seeding")
 	forceData := flag.Bool("force-data", false, "re-insert demo rows even if entities already contain data")
+	noData := flag.Bool("no-data", false, "skip seeding demo rows; install template + flows only. Use this for production tenants.")
 	flag.Parse()
 
 	dbURL := os.Getenv("DATABASE_URL")
@@ -77,6 +78,7 @@ func main() {
 		tenantName: *tenantName,
 		reset:      *reset,
 		forceData:  *forceData,
+		noData:     *noData,
 	}); err != nil {
 		log.Error("seed failed", "err", err)
 		os.Exit(1)
@@ -86,7 +88,7 @@ func main() {
 type opts struct {
 	email, password, userName string
 	tenantSlug, tenantName    string
-	reset, forceData          bool
+	reset, forceData, noData  bool
 }
 
 func run(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, o opts) error {
@@ -135,6 +137,12 @@ func run(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, o opts) erro
 		log.Info("agency template installed")
 	} else {
 		log.Info("agency template already present, skipping install")
+	}
+
+	if o.noData {
+		log.Info("no-data flag set; skipping demo rows")
+		log.Info("done", "email", user.Email, "password", o.password, "tenant", tn.Slug)
+		return nil
 	}
 
 	clientsEnt, err := entSvc.Get(ctx, tn.ID, "clients")
