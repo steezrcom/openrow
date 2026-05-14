@@ -95,10 +95,6 @@ function Hero() {
       />
       <div className="relative mx-auto grid max-w-6xl gap-12 px-6 py-20 md:grid-cols-[1.05fr,1fr] md:py-28 md:gap-10">
         <div>
-          <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-            For agencies, studios and consultancies under 50 people
-          </p>
           <h1 className="text-4xl font-semibold leading-[1.05] tracking-tight md:text-6xl">
             Describe your back office.
             <br />
@@ -205,7 +201,7 @@ function FeatureGrid() {
             kicker="Entities"
           >
             <p>
-              Type <em>"a project with name, client, status and a deadline"</em>. The form, the list view, the kanban, the foreign-key dropdown to <code className="rounded bg-muted px-1 font-mono text-[11px]">clients</code> — all there before you finish your coffee. Behind the scenes it's a real Postgres table that your engineers can query directly.
+              Type <em>"a project with name, client, status and a deadline"</em>. The form, the list view, the kanban, the foreign-key dropdown to <code className="rounded bg-muted px-1 font-mono text-[11px]">clients</code>: all there before you finish your coffee. Behind the scenes it's a real Postgres table that your engineers can query directly.
             </p>
           </Feature>
 
@@ -217,7 +213,7 @@ function FeatureGrid() {
 
           <Feature icon={Landmark} title="Banks and accounting without a licence" kicker="Connectors">
             <p>
-              Read your own Česká spořitelna, ČSOB, Fio and Revolut Business. Push and pull invoices in UOL or Fakturoid. Mirror to a Notion finanční databáze. The bank connectors use refresh-token OAuth — paste once, working until you rotate.
+              Read your own Česká spořitelna, ČSOB, Fio and Revolut Business. Push and pull invoices in UOL or Fakturoid. Mirror to a Notion finanční databáze. The bank connectors use refresh-token OAuth. Paste once, working until you rotate.
             </p>
           </Feature>
 

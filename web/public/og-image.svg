@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <radialGradient id="glow" cx="35%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#26a574" stop-opacity="0.35"/>
+      <stop offset="60%" stop-color="#26a574" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="grain" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f1419"/>
+      <stop offset="100%" stop-color="#08090c"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#grain)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- Wordmark, top-left -->
+  <g transform="translate(96 96)">
+    <rect width="48" height="48" rx="11" fill="#26a574" fill-opacity="0.18"/>
+    <path d="M24 9 L27.6 21.2 L39.8 24 L27.6 26.8 L24 39 L20.4 26.8 L8.2 24 L20.4 21.2 Z" fill="#26a574"/>
+    <text x="64" y="34" fill="#f5f5f7" font-family="-apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif" font-size="28" font-weight="600">openrow<tspan fill="#26a574">.</tspan></text>
+  </g>
+
+  <!-- Headline -->
+  <text x="96" y="320" fill="#f5f5f7" font-family="-apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif" font-size="84" font-weight="600" letter-spacing="-2">Describe your back office.</text>
+  <text x="96" y="416" fill="#26a574" font-family="-apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif" font-size="84" font-weight="600" letter-spacing="-2">openrow builds it.</text>
+
+  <!-- Sub-tagline -->
+  <text x="96" y="492" fill="#a1a1aa" font-family="-apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif" font-size="30" font-weight="400">Tables, dashboards, automations and connectors in one chat.</text>
+  <text x="96" y="534" fill="#a1a1aa" font-family="-apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif" font-size="30" font-weight="400">Open source. Self-host or run on openrow.app.</text>
+</svg>

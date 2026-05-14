@@ -3,10 +3,112 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpenRow</title>
+    <meta name="theme-color" content="#0a0a0c" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+
+    <title>openrow: Describe your back office. We build it.</title>
+    <meta
+      name="description"
+      content="openrow turns plain-English descriptions into real Postgres tables, dashboards, and AI-driven automations. Czech bank, accounting and Notion connectors out of the box. Open source, AGPL-3.0."
+    />
+    <link rel="canonical" href="https://www.openrow.app/" />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow" />
+
+    <!-- Icons -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="openrow" />
+    <meta property="og:title" content="openrow: Describe your back office. We build it." />
+    <meta
+      property="og:description"
+      content="Tables, dashboards, automations and connectors in one chat. Czech-flavoured. Self-host or run on openrow.app."
+    />
+    <meta property="og:url" content="https://www.openrow.app/" />
+    <meta property="og:image" content="https://www.openrow.app/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="openrow: Describe your back office. We build it." />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="cs_CZ" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="openrow: Describe your back office. We build it." />
+    <meta
+      name="twitter:description"
+      content="Tables, dashboards, automations and connectors in one chat. Czech-flavoured. Self-host or run on openrow.app."
+    />
+    <meta name="twitter:image" content="https://www.openrow.app/og-image.png" />
+    <meta name="twitter:image:alt" content="openrow: Describe your back office. We build it." />
+
+    <!-- Structured data: Organization + WebSite + SoftwareApplication -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://www.openrow.app/#organization",
+            "name": "openrow",
+            "url": "https://www.openrow.app/",
+            "logo": "https://www.openrow.app/icon-512.png",
+            "sameAs": ["https://github.com/steezrcom/openrow"]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://www.openrow.app/#website",
+            "url": "https://www.openrow.app/",
+            "name": "openrow",
+            "description": "Describe your back office. openrow builds it.",
+            "publisher": { "@id": "https://www.openrow.app/#organization" },
+            "inLanguage": "en"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://www.openrow.app/#software",
+            "name": "openrow",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web, Linux, macOS, Windows",
+            "url": "https://www.openrow.app/",
+            "image": "https://www.openrow.app/og-image.png",
+            "description": "An AI-native back-office platform for small teams. Describe a process in plain English and openrow creates the real Postgres table, the dashboard, and the automation around it.",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "EUR"
+            },
+            "softwareVersion": "0.1",
+            "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+            "sameAs": ["https://github.com/steezrcom/openrow"]
+          }
+        ]
+      }
+    </script>
   </head>
   <body class="min-h-screen bg-background text-foreground antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+
+    <!-- noscript fallback so crawlers without JS still get the gist -->
+    <noscript>
+      <div style="max-width: 720px; margin: 64px auto; padding: 24px; font-family: system-ui, sans-serif;">
+        <h1>openrow</h1>
+        <p>
+          openrow is an AI-native back-office platform for small teams. Describe a process in plain English and
+          openrow creates the table, the dashboard and the automation around it. Open source under AGPL-3.0.
+        </p>
+        <p>
+          The full site needs JavaScript. <a href="https://github.com/steezrcom/openrow">View the source on GitHub</a>
+          or <a href="mailto:hello@steezr.com">e-mail us</a> if you'd like a demo.
+        </p>
+      </div>
+    </noscript>
   </body>
 </html>
