@@ -74,12 +74,12 @@ export const docsConnectors: DocsConnector[] = [
       {
         title: '3. Configure OAuth 2.0',
         blurb:
-          "The Accounts API uses the authorization-code flow with a long-lived refresh token. You set this up once and openrow reuses the refresh token forever (rotating it on every successful refresh).",
+          "The Accounts API uses the authorization-code flow with a long-lived refresh token. You run the consent dance once, capture the refresh_token, and paste it into openrow. From that point openrow rotates it on every API call.",
         steps: [
           'Enable OAuth 2.0 on the bank connection.',
-          "Set the grant type to Code (authorization code). Don't pick Implicit; openrow needs a refresh token to keep working without re-consent.",
-          "Add a redirect URI you control. This is where the bank sends the user after consent. A small static page on your own domain works; so does a localhost handler you run for the one-time dance. Use a hostname, not a raw IP, and keep the URI stable: changing it later means rerunning consent.",
-          'Set the refresh-token validity to the maximum (90 days). The portal warns you ten days before it lapses; openrow rotates it on every API call so a regularly-used connector never reaches that warning.',
+          "Set the grant type to Code (authorization code). Don't pick Implicit; you need a refresh token to keep working without re-consent.",
+          "Pick the redirect URI you'll use for the consent dance. openrow doesn't host an OAuth callback today, so the URI is something you operate just long enough to capture the code parameter the bank appends to the redirect. Two options that work the same for openrow.app users and self-hosters: (a) a static page on a domain you own that simply shows the URL bar after the redirect, so you can copy the code out; (b) a localhost handler (Python's http.server, ngrok, or a one-line netcat). Use a hostname or http://localhost; not a raw IP. Keep the URI stable between EDP, the authorize request, and the token exchange — they have to match byte-for-byte.",
+          'Set the refresh-token validity to the maximum (90 days). The portal warns you ten days before it lapses; openrow rotates it on every API call, so a connector in regular use never reaches that warning.',
           'Save the configuration.',
         ],
       },
@@ -89,9 +89,10 @@ export const docsConnectors: DocsConnector[] = [
           'Before requesting production access, prove the integration works against the sandbox. You can do every step here without bank approval.',
         steps: [
           "In the application's Sandbox area, generate test credentials. You'll see three values: API Key, Client ID, Client Secret. These are sandbox-only.",
-          "Run the OAuth consent flow against the sandbox authorization endpoint shown in the portal, with response_type=code, scope=siblings.accounts, and your redirect URI. The portal displays test user credentials for the login screen.",
-          "When the redirect lands at your URI it carries a code= query parameter. POST that code (with grant_type=authorization_code, your client_id, client_secret, and redirect_uri) to the sandbox token endpoint. The response includes the refresh_token you'll paste into openrow.",
-          "In openrow open Settings → Connectors → Česká spořitelna. Paste Client ID, Client Secret, WEB-API key, Refresh token. Set Environment to sandbox. Click Test connection. A green tick means the credentials roundtrip works end to end.",
+          "Open the sandbox authorization URL in a browser: the portal lists it on the API page. Append ?response_type=code&client_id=<sandbox_client_id>&redirect_uri=<your_redirect_uri>&scope=siblings.accounts. Sign in with the sandbox test credentials the portal supplies, approve the consent.",
+          "The bank redirects to your URI with a ?code=... parameter. Copy that code value.",
+          "Exchange the code for tokens. From a terminal: curl -u <client_id>:<client_secret> -d 'grant_type=authorization_code&code=<code>&redirect_uri=<your_redirect_uri>' <sandbox_token_url> (the token URL is on the same API page). The response includes refresh_token — that's what you paste into openrow.",
+          "Open openrow → Settings → Connectors → Česká spořitelna. Paste Client ID, Client Secret, WEB-API key, Refresh token. Set Environment to sandbox. Click Test connection. A green tick means the credentials roundtrip works end to end.",
         ],
       },
       {
@@ -110,9 +111,9 @@ export const docsConnectors: DocsConnector[] = [
         blurb:
           "Once the bank approves the application, the production credentials become available. The flow mirrors the sandbox dance, against the live gateway this time.",
         steps: [
-          "Open the application in Production. The API Key, Client ID, and Client Secret now have production values. Reading the secret prompts a 2FA challenge.",
-          "Run the OAuth consent flow again, this time against the production authorization endpoint. The login screen is the real Česká spořitelna George login. Sign in with your banking identity and approve the requested scope.",
-          'Capture the production refresh_token the same way you did in sandbox: exchange the authorization code at the production token endpoint, copy refresh_token from the response.',
+          "Open the application in Production. The API Key, Client ID, and Client Secret now have production values. Reading the Client Secret prompts a 2FA challenge.",
+          "Repeat the consent dance against the production authorization endpoint with the production client_id and your redirect URI. The login screen is the real Česká spořitelna George login: sign in with your banking identity and approve the siblings.accounts scope.",
+          'Capture the production refresh_token by exchanging the authorization code at the production token endpoint (same curl command as in sandbox, with the production URLs and credentials).',
           'Update the openrow connector config: paste the production values, clear the Environment field (or set it to production), and click Test connection. From this point on openrow handles token refresh on its own.',
         ],
       },
