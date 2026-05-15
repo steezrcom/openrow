@@ -16,6 +16,12 @@ export type DocsConnectorAction = {
   mutates?: boolean
 }
 
+export type DocsConnectorPhase = {
+  title: string
+  blurb?: string
+  steps: string[]
+}
+
 export type DocsConnector = {
   id: string
   name: string
@@ -25,10 +31,12 @@ export type DocsConnector = {
   short: string
   intro: string
   steps: string[]
+  phases?: DocsConnectorPhase[]
   fields: DocsConnectorField[]
   actions: DocsConnectorAction[]
   webhook?: string
   example?: string
+  references?: { label: string; url: string }[]
 }
 
 export const docsConnectors: DocsConnector[] = [
@@ -41,34 +49,94 @@ export const docsConnectors: DocsConnector[] = [
     homepage: 'https://developers.erstegroup.com',
     short: 'Read own-account transactions via the George Developer API.',
     intro:
-      "Read-only access to your Česká spořitelna business accounts via Erste Group's George Developer API. The agent can list accounts, fetch transactions in a date range, and your flows can match incoming payments against open invoices.",
-    steps: [
-      'Sign up at developers.erstegroup.com and create an organisation. Add your live banking customer number to bind the developer profile to your real accounts.',
-      'Open My Applications and create a new application. Note the Client ID, Client Secret, and WEB-API key — you will paste all three here.',
-      "Add the redirect URI Erste requires for the consent flow. Pick a URL you control (your laptop's http://localhost callback works for the one-time consent).",
-      'Run the OAuth consent flow once with scope siblings.accounts. Capture the refresh_token from the token response.',
-      "Open Settings → Connectors → Česká spořitelna in openrow, paste the four values, leave Environment blank for production (or set 'sandbox' to test), and click Test connection.",
+      "Read-only access to your Česká spořitelna business accounts through Erste Group's George Developer API. The full onboarding has two halves: a sandbox you can verify in a single sitting, and a production application the bank reviews before issuing live credentials. Plan for the production review to take a few business days.",
+    steps: [],
+    phases: [
+      {
+        title: '1. Register on the Erste Developer Portal',
+        blurb:
+          'You need a developer account before you can do anything else. The portal is shared across Erste Group banks, but the credentials you get are scoped to whichever bank you connect.',
+        steps: [
+          'Open developers.erstegroup.com and create an account. Use a work address you can keep for the long run; bank approvals are tied to this identity.',
+          "From the dashboard, create a new application. The portal asks for a name, a short description, and an icon. Pick the application type 'Final API Consumer' (you're managing your own accounts, not building a service that handles other companies' accounts on their behalf). Save.",
+        ],
+      },
+      {
+        title: '2. Connect Česká spořitelna and pick the Accounts API',
+        blurb:
+          'A fresh application has no banks attached. You add Česká spořitelna explicitly and configure which APIs you want from it.',
+        steps: [
+          "Open the application overview. Add a new bank connection and pick 'Česká spořitelna a.s.' from the list.",
+          "Inside that bank connection, add the Accounts API product. This is the one that exposes balances and transactions.",
+          "Open the Scopes tab and tick siblings.accounts. That scope is what lets the API see your own accounts; without it the token works but every call returns empty.",
+        ],
+      },
+      {
+        title: '3. Configure OAuth 2.0',
+        blurb:
+          "The Accounts API uses the authorization-code flow with a long-lived refresh token. You set this up once and openrow reuses the refresh token forever (rotating it on every successful refresh).",
+        steps: [
+          'Enable OAuth 2.0 on the bank connection.',
+          "Set the grant type to Code (authorization code). Don't pick Implicit; openrow needs a refresh token to keep working without re-consent.",
+          "Add a redirect URI you control. This is where the bank sends the user after consent. A small static page on your own domain works; so does a localhost handler you run for the one-time dance. Use a hostname, not a raw IP, and keep the URI stable: changing it later means rerunning consent.",
+          'Set the refresh-token validity to the maximum (90 days). The portal warns you ten days before it lapses; openrow rotates it on every API call so a regularly-used connector never reaches that warning.',
+          'Save the configuration.',
+        ],
+      },
+      {
+        title: '4. Verify against the sandbox',
+        blurb:
+          'Before requesting production access, prove the integration works against the sandbox. You can do every step here without bank approval.',
+        steps: [
+          "In the application's Sandbox area, generate test credentials. You'll see three values: API Key, Client ID, Client Secret. These are sandbox-only.",
+          "Run the OAuth consent flow against the sandbox authorization endpoint shown in the portal, with response_type=code, scope=siblings.accounts, and your redirect URI. The portal displays test user credentials for the login screen.",
+          "When the redirect lands at your URI it carries a code= query parameter. POST that code (with grant_type=authorization_code, your client_id, client_secret, and redirect_uri) to the sandbox token endpoint. The response includes the refresh_token you'll paste into openrow.",
+          "In openrow open Settings → Connectors → Česká spořitelna. Paste Client ID, Client Secret, WEB-API key, Refresh token. Set Environment to sandbox. Click Test connection. A green tick means the credentials roundtrip works end to end.",
+        ],
+      },
+      {
+        title: '5. Enable 2FA and request production access',
+        blurb:
+          "Production credentials require two-factor on your developer account and a per-application approval from Česká spořitelna. The approval is a human review on the bank's side.",
+        steps: [
+          'Open your developer-account settings and enable two-factor authentication. The portal supports TOTP apps (Google Authenticator, 1Password, Bitwarden, Authy). Save the recovery key somewhere you trust; losing it locks you out if the device dies.',
+          "Switch the application's environment tab to Production.",
+          "Fill in the organisational details ČS requires: tax ID (DIČ for Czech entities), legal name, registered address, contact e-mail. These fields appear before the submission button is enabled.",
+          'Open Bank Approval, review the summary, and submit. The bank reviews asynchronously. Expect a few business days; the portal e-mails you when the decision lands.',
+        ],
+      },
+      {
+        title: '6. Wire production into openrow',
+        blurb:
+          "Once the bank approves the application, the production credentials become available. The flow mirrors the sandbox dance, against the live gateway this time.",
+        steps: [
+          "Open the application in Production. The API Key, Client ID, and Client Secret now have production values. Reading the secret prompts a 2FA challenge.",
+          "Run the OAuth consent flow again, this time against the production authorization endpoint. The login screen is the real Česká spořitelna George login. Sign in with your banking identity and approve the requested scope.",
+          'Capture the production refresh_token the same way you did in sandbox: exchange the authorization code at the production token endpoint, copy refresh_token from the response.',
+          'Update the openrow connector config: paste the production values, clear the Environment field (or set it to production), and click Test connection. From this point on openrow handles token refresh on its own.',
+        ],
+      },
     ],
     fields: [
-      { label: 'Client ID', required: true, description: 'From developers.erstegroup.com → My Applications.' },
-      { label: 'Client Secret', required: true, secret: true, description: 'Issued alongside the Client ID.' },
+      { label: 'Client ID', required: true, description: 'From the EDP application settings, production tab once approved.' },
+      { label: 'Client Secret', required: true, secret: true, description: 'Paired with the Client ID. The portal asks for 2FA before revealing the production value.' },
       {
         label: 'WEB-API key',
         required: true,
         secret: true,
         description:
-          'Sent as the WEB-API-key header on every request. Often equal to the Client ID in sandbox; differs in production.',
+          'Sent as the WEB-API-key header on every request. In the sandbox it often equals the Client ID; in production it is a separate value.',
       },
       {
         label: 'Refresh token',
         required: true,
         secret: true,
-        description: 'Obtained once via the OAuth consent flow with scope siblings.accounts.',
+        description: 'Captured once at the end of the OAuth consent flow with scope siblings.accounts. openrow rotates it on every refresh.',
       },
       {
         label: 'Environment',
         placeholder: 'production',
-        description: "Use 'sandbox' for the test environment; leave blank for production.",
+        description: "Set to 'sandbox' while you verify the integration; blank or 'production' for the live API.",
       },
     ],
     actions: [
@@ -79,6 +147,10 @@ export const docsConnectors: DocsConnector[] = [
           'Transactions for one account between fromDate and toDate (inclusive). Newest first. Compact projection with amount, counterparty, VS/KS/SS symbols and description.',
       },
       { name: 'Get account', description: 'Fetch a single account by id.' },
+    ],
+    references: [
+      { label: 'Erste Developer Portal', url: 'https://developers.erstegroup.com' },
+      { label: 'George Developer API (overview)', url: 'https://developers.erstegroup.com/docs/apis/bank.csas/' },
     ],
     example: "Show me unmatched incoming payments on ČS from the last 7 days.",
   },

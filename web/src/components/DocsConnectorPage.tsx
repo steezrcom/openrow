@@ -36,16 +36,41 @@ export function DocsConnectorPage({ c }: { c: DocsConnector }) {
       </div>
 
       <Section id="setup" title="Setting it up">
-        <ol className="space-y-3">
-          {c.steps.map((s, i) => (
-            <li key={i} className="flex gap-4 rounded-lg border border-border bg-card p-4">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-primary">
-                {i + 1}
-              </span>
-              <p className="text-sm leading-relaxed text-muted-foreground">{s}</p>
-            </li>
-          ))}
-        </ol>
+        {c.phases && c.phases.length > 0 ? (
+          <div className="space-y-8">
+            {c.phases.map((phase, pi) => (
+              <div key={pi} className="space-y-3">
+                <div className="border-l-2 border-primary/40 pl-4">
+                  <p className="text-sm font-semibold tracking-tight">{phase.title}</p>
+                  {phase.blurb && (
+                    <p className="mt-1 text-sm text-muted-foreground">{phase.blurb}</p>
+                  )}
+                </div>
+                <ol className="space-y-3">
+                  {phase.steps.map((s, i) => (
+                    <li key={i} className="flex gap-4 rounded-lg border border-border bg-card p-4">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-primary">
+                        {i + 1}
+                      </span>
+                      <p className="text-sm leading-relaxed text-muted-foreground">{s}</p>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <ol className="space-y-3">
+            {c.steps.map((s, i) => (
+              <li key={i} className="flex gap-4 rounded-lg border border-border bg-card p-4">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-primary">
+                  {i + 1}
+                </span>
+                <p className="text-sm leading-relaxed text-muted-foreground">{s}</p>
+              </li>
+            ))}
+          </ol>
+        )}
       </Section>
 
       {c.fields.length > 0 && (
@@ -121,12 +146,32 @@ export function DocsConnectorPage({ c }: { c: DocsConnector }) {
       {c.example && (
         <Section id="try-it" title="Try it">
           <p className="text-sm text-muted-foreground">
-            Once configured, paste this into the chat panel — the agent will pick the right tool.
+            Once configured, paste this into the chat panel. The agent will pick the right tool.
           </p>
           <div className="rounded-lg border border-border bg-muted/30 p-4 font-mono text-sm">
             <span className="mr-2 text-muted-foreground">›</span>
             {c.example}
           </div>
+        </Section>
+      )}
+
+      {c.references && c.references.length > 0 && (
+        <Section id="references" title="Provider docs">
+          <ul className="space-y-1 text-sm">
+            {c.references.map((r) => (
+              <li key={r.url}>
+                <a
+                  href={r.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-primary underline hover:no-underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  {r.label}
+                </a>
+              </li>
+            ))}
+          </ul>
         </Section>
       )}
     </DocPage>
