@@ -31,6 +31,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -52,9 +53,10 @@ const (
 
 // Encrypter holds the keyring and the version to write under.
 type Encrypter struct {
-	gcms       map[byte]cipher.AEAD // key version -> AEAD
-	writeVer   byte                 // version used to seal new ciphertexts
-	legacyGCM  cipher.AEAD          // used to open un-versioned rows
+	gcms      map[byte]cipher.AEAD // key version -> AEAD
+	writeVer  byte                 // version used to seal new ciphertexts
+	legacyGCM cipher.AEAD          // used to open un-versioned rows
+	writeKey  []byte               // raw bytes of the active write key, for DeriveKey
 }
 
 // New constructs an Encrypter from a single 32-byte key. The key is
@@ -65,10 +67,12 @@ func New(key []byte) (*Encrypter, error) {
 	if err != nil {
 		return nil, err
 	}
+	keyCopy := append([]byte(nil), key...)
 	return &Encrypter{
 		gcms:      map[byte]cipher.AEAD{1: gcm},
 		writeVer:  1,
 		legacyGCM: gcm,
+		writeKey:  keyCopy,
 	}, nil
 }
 
@@ -100,7 +104,22 @@ func NewMulti(keys map[byte][]byte, writeVer byte, legacyKey []byte) (*Encrypter
 		}
 		legacyGCM = g
 	}
-	return &Encrypter{gcms: gcms, writeVer: writeVer, legacyGCM: legacyGCM}, nil
+	writeKey := append([]byte(nil), keys[writeVer]...)
+	return &Encrypter{gcms: gcms, writeVer: writeVer, legacyGCM: legacyGCM, writeKey: writeKey}, nil
+}
+
+// DeriveKey returns a domain-separated 32-byte key derived from the
+// active write key. Use this when another subsystem needs an HMAC key
+// (e.g. OAuth state signing) without managing its own root secret.
+//
+// Derivation is SHA-256(write_key || 0x00 || domain). The 0x00 byte
+// keeps "key" and "domain" namespaces unambiguously separable.
+func (e *Encrypter) DeriveKey(domain string) []byte {
+	h := sha256.New()
+	h.Write(e.writeKey)
+	h.Write([]byte{0x00})
+	h.Write([]byte(domain))
+	return h.Sum(nil)
 }
 
 // NewFromEnv reads OPENROW_SECRET_KEY (single key) and/or any

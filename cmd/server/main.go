@@ -26,6 +26,7 @@ import (
 	"github.com/openrow/openrow/internal/mailer"
 	"github.com/openrow/openrow/internal/reports"
 	"github.com/openrow/openrow/internal/secrets"
+	"github.com/openrow/openrow/internal/signedstate"
 	"github.com/openrow/openrow/internal/store"
 	"github.com/openrow/openrow/internal/tenant"
 )
@@ -61,6 +62,10 @@ func run(log *slog.Logger) error {
 	log.Info("migrations applied")
 
 	enc, err := secrets.NewFromEnv("OPENROW_SECRET_KEY")
+	if err != nil {
+		return err
+	}
+	oauthSigner, err := signedstate.New(enc.DeriveKey("openrow-oauth-state-v1"))
 	if err != nil {
 		return err
 	}
@@ -127,6 +132,7 @@ func run(log *slog.Logger) error {
 		AppURL:           getOr("APP_URL", "http://localhost:5173"),
 		SecureCookies:    secureCookies,
 		SPADir:           os.Getenv("SPA_DIR"),
+		OAuthSigner:      oauthSigner,
 	})
 
 	srv := &http.Server{

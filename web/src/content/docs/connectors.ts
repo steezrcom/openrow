@@ -74,11 +74,11 @@ export const docsConnectors: DocsConnector[] = [
       {
         title: '3. Configure OAuth 2.0',
         blurb:
-          "The Accounts API uses the authorization-code flow with a long-lived refresh token. You run the consent dance once, capture the refresh_token, and paste it into openrow. From that point openrow rotates it on every API call.",
+          "Set up the application to use the authorization-code flow with a long-lived refresh token. openrow hosts the consent callback so the bank can redirect users straight back into Settings.",
         steps: [
           'Enable OAuth 2.0 on the bank connection.',
-          "Set the grant type to Code (authorization code). Don't pick Implicit; you need a refresh token to keep working without re-consent.",
-          "Pick the redirect URI you'll use for the consent dance. openrow doesn't host an OAuth callback today, so the URI is something you operate just long enough to capture the code parameter the bank appends to the redirect. Two options that work the same for openrow.app users and self-hosters: (a) a static page on a domain you own that simply shows the URL bar after the redirect, so you can copy the code out; (b) a localhost handler (Python's http.server, ngrok, or a one-line netcat). Use a hostname or http://localhost; not a raw IP. Keep the URI stable between EDP, the authorize request, and the token exchange — they have to match byte-for-byte.",
+          "Set the grant type to Code (authorization code). Don't pick Implicit; openrow needs a refresh token to keep working without re-consent.",
+          "Set the redirect URI to openrow's callback for this connector. Managed users: https://openrow.app/oauth/callback/csas. Self-hosters: https://<your-openrow-host>/oauth/callback/csas. Settings → Connectors → Česká spořitelna also shows the exact URL with a copy button so you don't have to construct it.",
           'Set the refresh-token validity to the maximum (90 days). The portal warns you ten days before it lapses; openrow rotates it on every API call, so a connector in regular use never reaches that warning.',
           'Save the configuration.',
         ],
@@ -88,11 +88,10 @@ export const docsConnectors: DocsConnector[] = [
         blurb:
           'Before requesting production access, prove the integration works against the sandbox. You can do every step here without bank approval.',
         steps: [
-          "In the application's Sandbox area, generate test credentials. You'll see three values: API Key, Client ID, Client Secret. These are sandbox-only.",
-          "Open the sandbox authorization URL in a browser: the portal lists it on the API page. Append ?response_type=code&client_id=<sandbox_client_id>&redirect_uri=<your_redirect_uri>&scope=siblings.accounts. Sign in with the sandbox test credentials the portal supplies, approve the consent.",
-          "The bank redirects to your URI with a ?code=... parameter. Copy that code value.",
-          "Exchange the code for tokens. From a terminal: curl -u <client_id>:<client_secret> -d 'grant_type=authorization_code&code=<code>&redirect_uri=<your_redirect_uri>' <sandbox_token_url> (the token URL is on the same API page). The response includes refresh_token — that's what you paste into openrow.",
-          "Open openrow → Settings → Connectors → Česká spořitelna. Paste Client ID, Client Secret, WEB-API key, Refresh token. Set Environment to sandbox. Click Test connection. A green tick means the credentials roundtrip works end to end.",
+          "In the application's Sandbox area, generate test credentials: API Key, Client ID, Client Secret. These are sandbox-only.",
+          "Open openrow → Settings → Connectors → Česká spořitelna. Paste Client ID, Client Secret, WEB-API key. Set Environment to sandbox. Save.",
+          "Click Authorize. openrow redirects you to the sandbox login. Sign in with the test credentials the EDP supplies and approve consent.",
+          'On return, the modal shows the refresh token as captured. Click Test connection — a green tick means the credentials roundtrip works end to end.',
         ],
       },
       {
@@ -112,9 +111,9 @@ export const docsConnectors: DocsConnector[] = [
           "Once the bank approves the application, the production credentials become available. The flow mirrors the sandbox dance, against the live gateway this time.",
         steps: [
           "Open the application in Production. The API Key, Client ID, and Client Secret now have production values. Reading the Client Secret prompts a 2FA challenge.",
-          "Repeat the consent dance against the production authorization endpoint with the production client_id and your redirect URI. The login screen is the real Česká spořitelna George login: sign in with your banking identity and approve the siblings.accounts scope.",
-          'Capture the production refresh_token by exchanging the authorization code at the production token endpoint (same curl command as in sandbox, with the production URLs and credentials).',
-          'Update the openrow connector config: paste the production values, clear the Environment field (or set it to production), and click Test connection. From this point on openrow handles token refresh on its own.',
+          "In openrow → Settings → Connectors → Česká spořitelna, paste the production values, clear the Environment field (or set it to production), and Save.",
+          "Click Re-autorizovat. openrow redirects you to the real Česká spořitelna George login. Sign in with your banking identity and approve the siblings.accounts scope.",
+          'On return, openrow has the production refresh token. Click Test connection. From this point openrow handles token refresh on its own.',
         ],
       },
     ],

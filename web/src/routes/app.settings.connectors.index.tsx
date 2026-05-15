@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { ExternalLink, Trash2 } from 'lucide-react'
+import { Copy, ExternalLink, ShieldCheck, Trash2 } from 'lucide-react'
 import {
   api,
   ApiError,
@@ -23,6 +23,7 @@ export const Route = createFileRoute('/app/settings/connectors/')({
 
 function ConnectorsPage() {
   const t = useT()
+  const qc = useQueryClient()
   const connectors = useQuery({ queryKey: ['connectors'], queryFn: api.listConnectors })
   const configs = useQuery({
     queryKey: ['connector-configs'],
@@ -32,6 +33,32 @@ function ConnectorsPage() {
 
   const configByID = new Map<string, ConnectorConfigSafe>()
   for (const c of configs.data ?? []) configByID.set(c.connector_id, c)
+
+  // Surface oauth callback result as a toast, then strip the params so a
+  // refresh doesn't re-fire.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const ok = params.get('oauth_connected')
+    const err = params.get('oauth_error')
+    if (!ok && !err) return
+    const list = connectors.data ?? []
+    const id = ok ?? params.get('oauth_connector')
+    const name = list.find((c) => c.id === id)?.name ?? id ?? 'connector'
+    if (ok) {
+      toast.success(`${name} připojen.`)
+      qc.invalidateQueries({ queryKey: ['connector-configs'] })
+    } else if (err) {
+      toast.error(`Autorizace selhala (${err}).`)
+    }
+    // Strip oauth_* params without a router round-trip.
+    const next = new URL(window.location.href)
+    next.searchParams.delete('oauth_connected')
+    next.searchParams.delete('oauth_error')
+    next.searchParams.delete('oauth_connector')
+    window.history.replaceState(null, '', next.pathname + next.search)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectors.data])
 
   return (
     <SettingsShell active="connectors" hint={t('settings.connectors.hint')}>
@@ -125,9 +152,16 @@ function ConfigureModal({
   const t = useT()
   const [error, setError] = useState<string | null>(null)
 
+  const oauthEnabled = Boolean(connector.oauth_supported)
+  const refreshTokenField = 'refresh_token'
+  const visibleCredentials = oauthEnabled
+    ? connector.credentials.filter((f) => f.name !== refreshTokenField)
+    : connector.credentials
+  const refreshCaptured = Boolean(existing?.fields_present?.[refreshTokenField])
+
   type FormValues = Record<string, string>
   const defaults: FormValues = {}
-  for (const f of connector.credentials) {
+  for (const f of visibleCredentials) {
     if (f.kind === 'secret') {
       defaults[f.name] = ''
     } else {
@@ -152,7 +186,7 @@ function ConfigureModal({
   const save = useMutation({
     mutationFn: async (v: FormValues) => {
       const fields: Record<string, string | null> = {}
-      for (const f of connector.credentials) {
+      for (const f of visibleCredentials) {
         const raw = v[f.name] ?? ''
         if (f.kind === 'secret') {
           if (raw === '' && existing?.fields_present?.[f.name]) continue
@@ -165,8 +199,13 @@ function ConfigureModal({
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['connector-configs'] })
-      toast.success(`${connector.name} uložen.`)
-      onClose()
+      if (oauthEnabled) {
+        // Keep the modal open so the user can click Authorize next.
+        toast.success(`${connector.name} uložen. Klikněte Autorizovat pro dokončení.`)
+      } else {
+        toast.success(`${connector.name} uložen.`)
+        onClose()
+      }
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'failed'),
   })
@@ -229,8 +268,16 @@ function ConfigureModal({
           </a>
         )}
 
+        {oauthEnabled && connector.callback_url && (
+          <CallbackBanner
+            url={connector.callback_url}
+            captured={refreshCaptured}
+            connectorName={connector.name}
+          />
+        )}
+
         <div className="space-y-3">
-          {connector.credentials.map((f) => {
+          {visibleCredentials.map((f) => {
             const present = Boolean(existing?.fields_present?.[f.name])
             const fieldErr = errors[f.name]
             return (
@@ -270,7 +317,7 @@ function ConfigureModal({
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         {existing && (
-          <div className="flex items-center gap-2 border-t border-border pt-3">
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
             <Button
               type="button"
               variant="ghost"
@@ -286,6 +333,19 @@ function ConfigureModal({
               <span className={cn('text-xs', testResult.ok ? 'text-primary' : 'text-destructive')}>
                 {testResult.ok ? t('connectors.test.ok') : (testResult.message ?? t('connectors.test.fail'))}
               </span>
+            )}
+            {oauthEnabled && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="ml-auto inline-flex items-center gap-1.5"
+                onClick={() => {
+                  window.location.href = `/api/v1/connectors/${connector.id}/oauth/start`
+                }}
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                {refreshCaptured ? 'Re-autorizovat' : 'Autorizovat'}
+              </Button>
             )}
           </div>
         )}
@@ -321,5 +381,51 @@ function ConfigureModal({
         </div>
       </form>
     </Modal>
+  )
+}
+
+function CallbackBanner({
+  url,
+  captured,
+  connectorName,
+}: {
+  url: string
+  captured: boolean
+  connectorName: string
+}) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
+      <p className="font-medium text-foreground">
+        Callback URL pro {connectorName}
+      </p>
+      <p className="mt-1 text-muted-foreground">
+        Vložte ji jako Redirect URI v portálu poskytovatele před prvním kliknutím na Autorizovat.
+      </p>
+      <div className="mt-2 flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px]">
+        <span className="flex-1 truncate">{url}</span>
+        <button
+          type="button"
+          onClick={() => {
+            navigator.clipboard.writeText(url).then(() => {
+              setCopied(true)
+              setTimeout(() => setCopied(false), 1500)
+            })
+          }}
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
+          aria-label="Copy callback URL"
+        >
+          <Copy className="h-3 w-3" />
+          {copied ? 'Zkopírováno' : 'Kopírovat'}
+        </button>
+      </div>
+      <p className="mt-2 text-muted-foreground">
+        {captured ? (
+          <>Refresh token uložen. Re-autorizace ho přepíše novým.</>
+        ) : (
+          <>Po uložení Client ID + Client Secret klikněte Autorizovat — vrátíme se sem s uloženým refresh tokenem.</>
+        )}
+      </p>
+    </div>
   )
 }

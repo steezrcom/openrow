@@ -11,17 +11,27 @@ import (
 
 // connectorDTO is the wire shape for the catalog — enriches the
 // descriptor with capability flags that aren't otherwise introspectable
-// from JSON (verifier, actions are func-valued).
+// from JSON (verifier, actions, OAuth metadata are all non-serialisable).
 type connectorDTO struct {
 	*connectors.Connector
-	HasVerifyWebhook bool `json:"has_verify_webhook"`
+	HasVerifyWebhook bool   `json:"has_verify_webhook"`
+	OAuthSupported   bool   `json:"oauth_supported"`
+	CallbackURL      string `json:"callback_url,omitempty"`
 }
 
 func (s *Server) listConnectors(w http.ResponseWriter, r *http.Request) {
 	all := connectors.All()
 	out := make([]connectorDTO, 0, len(all))
 	for _, c := range all {
-		out = append(out, connectorDTO{Connector: c, HasVerifyWebhook: c.VerifyWebhook != nil})
+		dto := connectorDTO{
+			Connector:        c,
+			HasVerifyWebhook: c.VerifyWebhook != nil,
+			OAuthSupported:   c.OAuth != nil,
+		}
+		if c.OAuth != nil {
+			dto.CallbackURL = s.oauthRedirectURI(c.ID)
+		}
+		out = append(out, dto)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"connectors": out})
 }

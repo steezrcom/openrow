@@ -73,6 +73,74 @@ type Connector struct {
 	// nil if the signature is valid; any error rejects the request as
 	// 401. Leave nil for connectors that don't send webhooks.
 	VerifyWebhook WebhookVerifier `json:"-"`
+
+	// OAuth, if set, lets openrow host the OAuth 2.0 authorization-code
+	// dance for this connector. Without it, the tenant captures the
+	// refresh_token externally and pastes it. See OAuthMeta for fields.
+	OAuth *OAuthMeta `json:"-"`
+}
+
+// OAuthMeta describes a connector's OAuth 2.0 endpoints so the server
+// can drive the authorization-code flow on the tenant's behalf and
+// persist the resulting refresh_token automatically.
+//
+// Endpoints are keyed by the value of the connector's environment-select
+// credential field (see EnvField). The empty key is the default; any
+// other key (e.g. "sandbox", "production") overrides it when the
+// tenant's config has that value in EnvField.
+type OAuthMeta struct {
+	AuthorizeURL map[string]string
+	TokenURL     map[string]string
+
+	// Scope sent on the authorize request.
+	Scope string
+
+	// EnvField names the credential field that selects which endpoint
+	// map entry applies. Empty defaults to "environment".
+	EnvField string
+
+	// ClientIDField / ClientSecretField name the fields that hold the
+	// OAuth client credentials. Defaults: "client_id" / "client_secret".
+	ClientIDField     string
+	ClientSecretField string
+
+	// RefreshTokenField names the field the captured refresh_token is
+	// written into. Default "refresh_token".
+	RefreshTokenField string
+
+	// ExtraAuthorizeParams adds connector-specific query parameters to
+	// the authorize URL. Rarely needed.
+	ExtraAuthorizeParams map[string]string
+}
+
+// EndpointFor resolves the AuthorizeURL or TokenURL for a given
+// environment value. Falls back to the empty-key entry.
+func (m *OAuthMeta) EndpointFor(table map[string]string, env string) string {
+	if v, ok := table[env]; ok && v != "" {
+		return v
+	}
+	return table[""]
+}
+
+// Resolved returns the field names with defaults applied.
+func (m *OAuthMeta) Resolved() (envField, clientIDField, clientSecretField, refreshField string) {
+	envField = m.EnvField
+	if envField == "" {
+		envField = "environment"
+	}
+	clientIDField = m.ClientIDField
+	if clientIDField == "" {
+		clientIDField = "client_id"
+	}
+	clientSecretField = m.ClientSecretField
+	if clientSecretField == "" {
+		clientSecretField = "client_secret"
+	}
+	refreshField = m.RefreshTokenField
+	if refreshField == "" {
+		refreshField = "refresh_token"
+	}
+	return
 }
 
 // WebhookVerifier authenticates a webhook request against a per-flow

@@ -51,13 +51,25 @@ func init() {
 			{Name: "api_key", Label: "WEB-API key", Kind: connectors.FieldSecret, Required: true,
 				Help: "Sent as the WEB-API-key header on every request. Often equal to the Client ID in sandbox; differs in production."},
 			{Name: "refresh_token", Label: "Refresh token", Kind: connectors.FieldSecret, Required: true,
-				Help: "Obtained once through the OAuth consent flow with scope \"siblings.accounts\"."},
+				Help: "Captured automatically when you click Authorize. You can paste one here instead if you have one from elsewhere."},
 			{Name: "environment", Label: "Environment", Kind: connectors.FieldText, Required: false,
 				Placeholder: "production",
-				Help:        "Use \"sandbox\" for the test environment; leave blank for production."},
+				Help:        "Use \"sandbox\" for the test environment; leave blank for production.",
+			},
 		},
 		Test:    test,
 		Actions: actions(),
+		OAuth: &connectors.OAuthMeta{
+			AuthorizeURL: map[string]string{
+				"":        "https://bezpecnost.csas.cz/api/psd2/fl/oidc/v1/auth",
+				"sandbox": "https://webapi.developers.erstegroup.com/api/csas/sandbox/v1/sandbox-idp/auth",
+			},
+			TokenURL: map[string]string{
+				"":        prodTokenURL,
+				"sandbox": sandboxTokenURL,
+			},
+			Scope: "siblings.accounts",
+		},
 	})
 }
 

@@ -617,6 +617,8 @@ export interface Connector {
   status: ConnectorStatus
   credentials: CredentialField[]
   has_verify_webhook?: boolean
+  oauth_supported?: boolean
+  callback_url?: string
 }
 
 export interface ConnectorConfigSafe {

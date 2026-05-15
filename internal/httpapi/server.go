@@ -17,6 +17,7 @@ import (
 	"github.com/openrow/openrow/internal/mailer"
 	"github.com/openrow/openrow/internal/ratelimit"
 	"github.com/openrow/openrow/internal/reports"
+	"github.com/openrow/openrow/internal/signedstate"
 	"github.com/openrow/openrow/internal/spa"
 	"github.com/openrow/openrow/internal/tenant"
 )
@@ -49,6 +50,7 @@ type Server struct {
 	secureCookies    bool
 	spaDir           string
 	externalBindings *ExternalBindings
+	oauthSigner      *signedstate.Signer
 }
 
 type Deps struct {
@@ -77,6 +79,11 @@ type Deps struct {
 	// SPADir is the path to the built React app. When empty the SPA route 503s,
 	// which is expected in API-only dev mode where Vite serves the UI.
 	SPADir string
+	// OAuthSigner signs and verifies OAuth state parameters. Required for
+	// connectors with an OAuthMeta descriptor; safe to leave nil if no
+	// OAuth-capable connectors are registered (start/callback routes will
+	// refuse to operate).
+	OAuthSigner *signedstate.Signer
 }
 
 func New(d Deps) *Server {
@@ -127,6 +134,7 @@ func New(d Deps) *Server {
 		secureCookies:    d.SecureCookies,
 		spaDir:           d.SPADir,
 		externalBindings: d.ExternalBindings,
+		oauthSigner:      d.OAuthSigner,
 	}
 }
 
@@ -142,6 +150,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/auth/forgot", rateLimitByIP(s.resetLimiter, http.HandlerFunc(s.forgotPassword)))
 	mux.Handle("POST /api/v1/auth/reset", rateLimitByIP(s.resetLimiter, http.HandlerFunc(s.resetPassword)))
 	mux.HandleFunc("POST /webhooks/{tenant_slug}/{flow_id}", s.webhookReceive)
+	mux.HandleFunc("GET /oauth/callback/{id}", s.handleOAuthCallback)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -207,6 +216,7 @@ func (s *Server) Handler() http.Handler {
 	authed.Handle("PUT /api/v1/connectors/configs/{id}", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.putConnectorConfig)))
 	authed.Handle("POST /api/v1/connectors/configs/{id}/test", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.testConnectorConfig)))
 	authed.Handle("DELETE /api/v1/connectors/configs/{id}", auth.RequireRole(auth.RoleOwner, http.HandlerFunc(s.deleteConnectorConfig)))
+	authed.Handle("GET /api/v1/connectors/{id}/oauth/start", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.handleOAuthStart)))
 
 	authed.Handle("GET /api/v1/dashboards", auth.RequireMembership(http.HandlerFunc(s.listDashboards)))
 	authed.Handle("POST /api/v1/dashboards", auth.RequireRole(auth.RoleAdmin, http.HandlerFunc(s.createDashboard)))
