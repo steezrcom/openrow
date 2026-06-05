@@ -50,7 +50,10 @@ func init() {
 			{Name: "client_secret", Label: "Client Secret", Kind: connectors.FieldSecret, Required: true},
 			{Name: "api_key", Label: "WEB-API key", Kind: connectors.FieldSecret, Required: true,
 				Help: "Sent as the WEB-API-key header on every request. Often equal to the Client ID in sandbox; differs in production."},
-			{Name: "refresh_token", Label: "Refresh token", Kind: connectors.FieldSecret, Required: true,
+			// Not required at save time: the OAuth callback (see OAuth below)
+			// writes this after the user clicks Authorize. Marking it required
+			// would block saving client_id/secret, which the authorize step needs.
+			{Name: "refresh_token", Label: "Refresh token", Kind: connectors.FieldSecret, Required: false,
 				Help: "Captured automatically when you click Authorize. You can paste one here instead if you have one from elsewhere."},
 			{Name: "environment", Label: "Environment", Kind: connectors.FieldText, Required: false,
 				Placeholder: "production",
