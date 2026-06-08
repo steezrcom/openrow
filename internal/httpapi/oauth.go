@@ -272,6 +272,7 @@ func exchangeAuthorizationCode(ctx context.Context, tokenURL, clientID, clientSe
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", connectors.UserAgent)
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	res, err := client.Do(req)

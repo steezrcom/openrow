@@ -23,6 +23,12 @@ const (
 	StatusAvailable Status = "available"
 )
 
+// UserAgent is sent on outbound HTTP requests to third-party providers.
+// Some providers (e.g. Česká spořitelna's F5 WAF) reset connections from
+// Go's default "Go-http-client/1.1" User-Agent, so connector HTTP calls
+// must set an explicit one.
+const UserAgent = "openrow/1.0"
+
 // FieldKind controls the HTML input type the settings UI renders for a
 // credential field. "secret" means the value is masked and never sent back
 // to the client after save.

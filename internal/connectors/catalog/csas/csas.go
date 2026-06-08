@@ -382,6 +382,7 @@ func call(ctx context.Context, creds map[string]string, method, path string, bod
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("WEB-API-key", apiKey)
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", connectors.UserAgent)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -419,6 +420,7 @@ func acquireAccessToken(ctx context.Context, client *http.Client, creds map[stri
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", connectors.UserAgent)
 
 	res, err := client.Do(req)
 	if err != nil {
